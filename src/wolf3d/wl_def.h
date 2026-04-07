@@ -1508,11 +1508,9 @@ void GP2X_ButtonUp (int button);
 #endif
     static inline char *ltoa (long value, char *string, int radix)
     {
-        int len = strlen(string) + 1;
-
-	    snprintf (string,len,"%ld",value);
-
-	    return string;
+        (void)radix;
+        sprintf (string,"%ld",value);
+        return string;
     }
 #endif
 

@@ -110,27 +110,24 @@ SDL_Color *wolf_get_palette(void) {
     return current_palette;
 }
 
-// Push framebuffer to HDMI
-void wolf_update_screen(void) {
-    if (!wolf_screenbuffer) return;
+// Push a framebuffer to HDMI (NULL = use default wolf_screenbuffer)
+void wolf_update_screen_from(uint8_t *buf) {
+    if (!buf) buf = wolf_screenbuffer;
+    if (!buf) return;
 
-    // The HDMI driver uses a shared graphics buffer.
-    // Wolf3D is 320x200, HDMI is 320x240 -- center vertically with 20px black bars
     uint8_t *hdmi_buf = graphics_get_buffer();
     if (!hdmi_buf) return;
 
     int y_offset = 20;
 
-    // Clear top bar
     memset(hdmi_buf, 0, WOLF_RESX * y_offset);
-
-    // Copy framebuffer (already 8-bit indexed, HDMI palette handles conversion)
-    memcpy(hdmi_buf + WOLF_RESX * y_offset, wolf_screenbuffer,
-           WOLF_RESX * WOLF_RESY);
-
-    // Clear bottom bar
+    memcpy(hdmi_buf + WOLF_RESX * y_offset, buf, WOLF_RESX * WOLF_RESY);
     memset(hdmi_buf + WOLF_RESX * (y_offset + WOLF_RESY), 0,
            WOLF_RESX * y_offset);
+}
+
+void wolf_update_screen(void) {
+    wolf_update_screen_from(wolf_screenbuffer);
 }
 
 // Set HDMI palette from SDL_Color array

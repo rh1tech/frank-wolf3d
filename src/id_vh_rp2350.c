@@ -66,9 +66,12 @@ void VW_MeasurePropString(const char *string, word *width, word *height) {
 */
 
 void VH_UpdateScreen(SDL_Surface *surface) {
-    (void)surface;
-    // Push framebuffer to HDMI
-    wolf_update_screen();
+    // Push the given surface to HDMI
+    extern void wolf_update_screen_from(uint8_t *buf);
+    if (surface && surface->pixels)
+        wolf_update_screen_from((uint8_t *)surface->pixels);
+    else
+        wolf_update_screen_from(NULL);
 }
 
 void VWB_DrawTile8(int x, int y, int tile) {
@@ -191,7 +194,6 @@ boolean FizzleFade(SDL_Surface *source, int x1, int y1,
             if (x >= width || y >= height)
                 p--;
             else {
-                // 8-bit copy
                 *(destptr + (y1 + y) * screen->pitch + x1 + x)
                     = *(srcptr + (y1 + y) * source->pitch + x1 + x);
             }

@@ -87,12 +87,14 @@ void VL_SetVGAPlaneMode(void) {
     screenBuffer->format->BytesPerPixel = 1;
     screenBuffer->format->palette = (SDL_Palette *)calloc(1, sizeof(SDL_Palette));
 
-    // screen surface (same as screenBuffer for 8-bit mode)
+    // screen surface - separate buffer used as FizzleFade destination
+    extern void *psram_malloc(size_t size);
     screen = (SDL_Surface *)calloc(1, sizeof(SDL_Surface));
     screen->w = screenWidth;
     screen->h = screenHeight;
     screen->pitch = screenWidth;
-    screen->pixels = fb;
+    screen->pixels = psram_malloc(screenWidth * screenHeight);
+    memset(screen->pixels, 0, screenWidth * screenHeight);
     screen->format = (SDL_PixelFormat *)calloc(1, sizeof(SDL_PixelFormat));
     screen->format->BytesPerPixel = 1;
     screen->format->palette = (SDL_Palette *)calloc(1, sizeof(SDL_Palette));

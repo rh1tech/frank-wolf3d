@@ -306,8 +306,6 @@ boolean SD_SetMusicMode(byte mode) {
     boolean result = false;
 
     SD_FadeOutMusic();
-    while (SD_MusicPlaying())
-        SDL_Delay(5);
 
     switch (mode) {
         case smm_Off: result = true; break;
@@ -431,33 +429,24 @@ boolean SD_PlaySound(int sound) {
 }
 
 word SD_SoundPlaying(void) {
-    boolean result = false;
-
-    switch (SoundMode) {
-        case sdm_PC: result = pcSound ? true : false; break;
-        case sdm_AdLib: result = alSound ? true : false; break;
-        default: break;
-    }
-
-    return result ? SoundNumber : false;
+    // No audio callback running on RP2350 yet, so sounds never
+    // finish on their own.  Report nothing playing to avoid hangs.
+    return 0;
 }
 
 void SD_StopSound(void) {
     if (DigiPlaying) SD_StopDigitized();
 
-    switch (SoundMode) {
-        case sdm_PC: SDL_PCStopSound(); break;
-        case sdm_AdLib: SDL_ALStopSound(); break;
-        default: break;
-    }
+    // Force-clear both channels since we have no playback callback
+    pcSound = 0;
+    alSound = 0;
 
     SoundPositioned = false;
     SDL_SoundFinished();
 }
 
 void SD_WaitSoundDone(void) {
-    while (SD_SoundPlaying())
-        SDL_Delay(5);
+    // No-op: no audio playback callback, nothing to wait for
 }
 
 void SD_MusicOn(void) {
