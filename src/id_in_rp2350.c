@@ -70,29 +70,41 @@ static ScanCode IN_MapKey(int key) {
 =============================================================================
 */
 
-void IN_ProcessEvents(void) {
-    ps2kbd_poll();
+static int dbg_input_count = 0;
 
-    // Read key states from PS/2 driver
-    for (int i = 0; i < 256; i++) {
-        bool pressed = ps2kbd_is_key_pressed(i);
-        ScanCode sc = hid_to_scancode(i);
+void IN_ProcessEvents(void) {
+    // Process multiple PS/2 bytes per frame
+    for (int t = 0; t < 16; t++)
+        ps2kbd_poll();
+
+    // Drain the event queue from the PS/2 driver
+    int pressed;
+    unsigned char hid_code;
+    while (ps2kbd_get_key(&pressed, &hid_code)) {
+        ScanCode sc = hid_to_scancode(hid_code);
+
+        if (dbg_input_count < 50) {
+            printf("[KEY] hid=0x%02X sc=%d %s\n", hid_code, (int)sc, pressed ? "DOWN" : "UP");
+            dbg_input_count++;
+        }
+
         if (sc == sc_None || sc >= sc_Last) continue;
 
         sc = IN_MapKey(sc);
 
-        if (pressed && !Keyboard[sc]) {
-            // Key just pressed
+        if (pressed) {
             Keyboard[sc] = true;
             LastScan = sc;
-
             if (sc == sc_Pause)
                 Paused = true;
-        } else if (!pressed && Keyboard[sc]) {
-            // Key just released
+        } else {
             Keyboard[sc] = false;
         }
     }
+
+    // Event queue already handles press/release transitions.
+    // No additional sync needed - the key_states array in the PS/2 driver
+    // and the Keyboard[] array are kept in sync via events above.
 }
 
 void IN_WaitEvent(void) {

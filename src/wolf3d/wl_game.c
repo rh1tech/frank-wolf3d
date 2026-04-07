@@ -1279,7 +1279,7 @@ void Died (void)
 
             ThreeDRefresh ();
             CalcTics ();
-        } while (curangle != iangle);
+        } while (curangle < iangle);
     }
     else
     {
@@ -1301,7 +1301,7 @@ void Died (void)
 
             ThreeDRefresh ();
             CalcTics ();
-        } while (curangle != iangle);
+        } while (curangle > iangle);
     }
 
     //
