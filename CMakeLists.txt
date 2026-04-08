@@ -125,9 +125,9 @@ target_compile_definitions(frank-wolf PRIVATE
     CPU_CLOCK_MHZ=${CPU_SPEED}
     CPU_VOLTAGE=${CPU_VOLTAGE}
     PSRAM_MAX_FREQ_MHZ=${PSRAM_SPEED}
-    # Wolf3D version: auto-detect WL6/WL3/WL1 at runtime (Apogee format)
-    # For Steam/GOG WL6: add GOODTIMES (uses gfxv_wl6.h, 149 chunks)
-    # For Spear of Destiny: add SPEAR (uses gfxv_sod.h)
+    # Wolf3D version: auto-detect WL6/WL3/WL1 at runtime (Apogee v1.1)
+    # Data has 158 gfx chunks (no H_SPEARADPIC, no C_JOY1PIC/C_JOY2PIC)
+    APOGEE_1_1
     CARMACIZED
     VERSIONALREADYCHOSEN
     DEBUGKEYS

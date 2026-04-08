@@ -459,7 +459,6 @@ void CAL_SetupGrFile (void)
     FILE *file;
     byte *compseg;
 
-    printf("[GR] Loading dict...\n");
     snprintf (fname,sizeof(fname),"%s%s",gdictname,extension);
     file = fopen(fname,"rb");
     if (!file)
@@ -467,7 +466,6 @@ void CAL_SetupGrFile (void)
     fread (grhuffman,sizeof(grhuffman),1,file);
     fclose (file);
 
-    printf("[GR] Loading head...\n");
     snprintf (fname,sizeof(fname),"%s%s",gheadname,extension);
     file = fopen(fname,"rb");
     if (!file)
@@ -478,7 +476,6 @@ void CAL_SetupGrFile (void)
     fseek (file,0,SEEK_SET);
 
 	int expectedsize = lengthof(grstarts);
-    printf("[GR] headersize=%ld, expected=%d\n", (long)headersize, expectedsize);
 
     if(!param_ignorenumchunks && headersize / 3 != expectedsize)
         Quit("Wolf4SDL was not compiled for these data files:\n"
@@ -488,14 +485,11 @@ void CAL_SetupGrFile (void)
             fname, headersize / 3, expectedsize);
 
     byte data[lengthof(grstarts) * 3];
-    memset(data, 0xFF, sizeof(data));  // default all offsets to -1 (sparse)
+    memset(data, 0xFF, sizeof(data));
     int32_t readsize = headersize;
     if (readsize > (int32_t)sizeof(data)) readsize = (int32_t)sizeof(data);
     fread (data, readsize, 1, file);
     fclose (file);
-
-    printf("[GR] Read %ld bytes from vgahead (%d chunks in file, %d expected)\n",
-           (long)readsize, (int)(headersize / 3), (int)lengthof(grstarts));
 
     byte *d = data;
     int32_t* i;
@@ -506,27 +500,21 @@ void CAL_SetupGrFile (void)
         d += 3;
     }
 
-    printf("[GR] Loading graphics file...\n");
     snprintf (fname,sizeof(fname),"%s%s",gfilename,extension);
     file = fopen(fname,"rb");
     if (!file)
         CA_CannotOpen (fname);
 
-    printf("[GR] Loading pictable...\n");
     pictable = SafeMalloc(NUMPICS * sizeof(*pictable));
     CAL_GetGrChunkLength (file,STRUCTPIC);
-    printf("[GR] pictable: comp=%ld exp=%ld\n", (long)chunkcomplen, (long)(NUMPICS * sizeof(*pictable)));
 #ifdef PICO_ON_DEVICE
     compseg = (byte *)malloc(chunkcomplen);
-    printf("[GR] compseg SRAM=%p\n", compseg);
-    if (!compseg) { compseg = SafeMalloc(chunkcomplen); printf("[GR] fallback PSRAM\n"); }
+    if (!compseg) compseg = SafeMalloc(chunkcomplen);
 #else
     compseg = SafeMalloc(chunkcomplen);
 #endif
     fread (compseg,chunkcomplen,1,file);
-    printf("[GR] HuffExpand start (src=%p dst=%p)...\n", compseg, pictable);
     CAL_HuffExpand(compseg, (byte*)pictable, NUMPICS * sizeof(*pictable), grhuffman);
-    printf("[GR] HuffExpand done\n");
 #ifdef PICO_ON_DEVICE
     if ((uintptr_t)compseg < 0x11000000) free(compseg);
     else safe_free(compseg);
@@ -534,11 +522,7 @@ void CAL_SetupGrFile (void)
     free(compseg);
 #endif
 
-    printf("[GR] Caching all chunks...\n");
-    fflush(stdout);
     CA_CacheGrChunks (file);
-
-    printf("[GR] Done\n");
     fclose (file);
 }
 
@@ -632,9 +616,6 @@ void CAL_SetupAudioFile (void)
 
     CA_LoadFile (fname,(void **)&audiostarts);
 
-    printf("[CA] Loaded %s, NUMSNDCHUNKS=%d\n", fname, NUMSNDCHUNKS);
-    fflush(stdout);
-
 //
 // open the data file
 //
@@ -661,13 +642,9 @@ void CAL_SetupAudioFile (void)
 
 void CA_Startup (void)
 {
-    printf("[CA] SetupMapFile...\n");
     CAL_SetupMapFile ();
-    printf("[CA] SetupGrFile...\n");
     CAL_SetupGrFile ();
-    printf("[CA] SetupAudioFile...\n");
     CAL_SetupAudioFile ();
-    printf("[CA] Done\n");
 }
 
 //==========================================================================
@@ -749,8 +726,6 @@ int32_t CA_CacheAudioChunk (int chunk)
         return size;                        // already in memory
 
     if (pos < 0 || size <= 0 || size > 512 * 1024) {
-        printf("[CA] SKIP audio chunk %d: bad offset %ld / size %ld\n",
-               chunk, (long)pos, (long)size);
         audiosegs[chunk] = NULL;
         return 0;
     }
@@ -774,8 +749,6 @@ void CA_CacheAdlibSoundChunk (int chunk)
         return;                        // already in memory
 
     if (pos < 0 || size <= 0 || size > 512 * 1024) {
-        printf("[CA] SKIP adlib chunk %d: bad offset %ld / size %ld\n",
-               chunk, (long)pos, (long)size);
         audiosegs[chunk] = NULL;
         return;
     }
@@ -930,9 +903,7 @@ void CAL_ExpandGrChunk (int chunk, int32_t *source)
     // allocate final space and decompress it
     //
 #ifdef PICO_ON_DEVICE
-    printf("[GR] expand chunk %d: %ld bytes\n", chunk, (long)expanded);
     if (expanded <= 0 || expanded > 256 * 1024) {
-        printf("[GR] SKIP chunk %d: bad expanded size %ld\n", chunk, (long)expanded);
         grsegs[chunk] = NULL;
         return;
     }
@@ -990,8 +961,6 @@ void CA_CacheGrChunks (FILE *grfile)
     int32_t *source;
     int     chunk,next;
 
-    printf("[GR] CacheGrChunks: STRUCTPIC=%d NUMCHUNKS=%d\n", STRUCTPIC, NUMCHUNKS);
-    fflush(stdout);
     for (chunk = STRUCTPIC + 1; chunk < NUMCHUNKS; chunk++)
     {
         if (grsegs[chunk])
@@ -1011,17 +980,13 @@ void CA_CacheGrChunks (FILE *grfile)
         {
             next++;
             if (next > NUMCHUNKS + 100) {
-                printf("[GR] ERROR: sparse tile scan runaway at chunk %d, next=%d\n", chunk, next);
+                printf("ERROR: sparse tile scan runaway at chunk %d\n", chunk);
                 break;
             }
         }
 
         compressed = GRFILEPOS(next)-pos;
 
-#ifdef PICO_ON_DEVICE
-        printf("[GR] %d/%d comp=%ld\n", chunk, NUMCHUNKS, (long)compressed);
-        fflush(stdout);
-#endif
 
         fseek (grfile,pos,SEEK_SET);
 

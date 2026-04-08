@@ -106,8 +106,6 @@ static ScanCode IN_MapKey(int key) {
 =============================================================================
 */
 
-static int dbg_input_count = 0;
-
 void IN_ProcessEvents(void) {
     // Process multiple PS/2 bytes per frame
     for (int t = 0; t < 16; t++)
@@ -118,11 +116,6 @@ void IN_ProcessEvents(void) {
     unsigned char hid_code;
     while (ps2kbd_get_key(&pressed, &hid_code)) {
         ScanCode sc = hid_to_scancode(hid_code);
-
-        if (dbg_input_count < 50) {
-            printf("[KEY] hid=0x%02X sc=%d %s\n", hid_code, (int)sc, pressed ? "DOWN" : "UP");
-            dbg_input_count++;
-        }
 
         if (sc == sc_None || sc >= sc_Last) continue;
 
