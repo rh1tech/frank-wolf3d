@@ -317,8 +317,29 @@ static int boot_text_width(const char *text) {
     return n * 6;
 }
 
-static void boot_draw_animated_border(uint8_t *fb, uint32_t t_ms,
-                                      int px, int py, int pw, int ph) {
+/* Cyan-themed Wolf3D welcome screen palette */
+static void boot_setup_palette(void) {
+    graphics_set_palette(0, 0x000000);  /* black */
+    graphics_set_palette(1, 0xFFFFFF);  /* white text */
+    /* Indices 2-17: dark cyans for background border */
+    static const uint32_t wolf_bg_pal[16] = {
+        0x000504, 0x000A08, 0x00100C, 0x001610,
+        0x001C14, 0x002218, 0x00281C, 0x002E20,
+        0x003424, 0x003A28, 0x00402C, 0x004630,
+        0x004C34, 0x005238, 0x00583C, 0x005E40,
+    };
+    for (int i = 0; i < 16; ++i)
+        graphics_set_palette(2 + i, wolf_bg_pal[i]);
+    /* Title highlight: cyan */
+    graphics_set_palette(18, 0x007050);
+}
+
+#ifndef FRANK_WOLF_VERSION
+#define FRANK_WOLF_VERSION "?"
+#endif
+
+static void boot_draw_animated_bg(uint8_t *fb, uint32_t t_ms,
+                                  int px, int py, int pw, int ph) {
     const int t = (int)(t_ms / 80);
     const int px2 = px + pw, py2 = py + ph;
     for (int y = 0; y < HDMI_RESY; ++y) {
@@ -332,56 +353,28 @@ static void boot_draw_animated_border(uint8_t *fb, uint32_t t_ms,
     }
 }
 
-/* Cyan-themed Wolf3D welcome screen palette */
-static void boot_setup_palette(void) {
-    graphics_set_palette(0, 0x000000);  /* black */
-    graphics_set_palette(1, 0xFFFFFF);  /* white text */
-    /* Indices 2-17: dark Wolf3D cyans for animated border */
-    static const uint32_t wolf_bg_pal[16] = {
-        0x000105, 0x000208, 0x00030B, 0x00040E,
-        0x000512, 0x000616, 0x00071A, 0x00081E,
-        0x000922, 0x000A26, 0x000B2A, 0x000C2E,
-        0x000D33, 0x000E38, 0x000F3D, 0x001042,
-    };
-    for (int i = 0; i < 16; ++i)
-        graphics_set_palette(2 + i, wolf_bg_pal[i]);
-    /* Title highlight: bright cyan */
-    graphics_set_palette(18, 0x001450);
-}
+/* Draw the static panel content (called once) */
+static const int WS_PX = 40, WS_PY = 70;
+#define WS_PW (WOLF_RESX - 80)
+#define WS_PH 100
 
-#ifndef FRANK_WOLF_VERSION
-#define FRANK_WOLF_VERSION "?"
-#endif
+static void wolf_draw_welcome_panel(uint8_t *fb) {
+    boot_fill_rect(fb, WS_PX, WS_PY, WS_PW, WS_PH, 0);
 
-static void wolf_show_welcome(uint8_t *fb) {
-    boot_setup_palette();
-    memset(fb, 0, WOLF_RESX * HDMI_RESY);
-
-    const int panel_x = 24, panel_y = 24;
-    const int panel_w = WOLF_RESX - 48, panel_h = HDMI_RESY - 48;
-
-    boot_draw_animated_border(fb, to_ms_since_boot(get_absolute_time()),
-                              panel_x, panel_y, panel_w, panel_h);
-    boot_fill_rect(fb, panel_x, panel_y, panel_w, panel_h, 0);
-
-    /* Title */
     const char *title = "FRANK WOLF3D";
     char version[64];
     snprintf(version, sizeof(version), " v%s", FRANK_WOLF_VERSION);
     int title_w = boot_text_width(title);
-    int version_w = boot_text_width(version);
-    int title_x = (WOLF_RESX - title_w - version_w) / 2;
-    int title_y = panel_y + 10;
-    boot_fill_rect(fb, title_x - 2, title_y - 2, title_w + 4, 11, 18);
-    boot_draw_text(fb, title_x, title_y, title, 0);
-    boot_draw_text(fb, title_x + title_w, title_y, version, 1);
+    int title_x = WS_PX + (WS_PW - title_w - boot_text_width(version)) / 2;
+    int ty = WS_PY + 8;
+    boot_fill_rect(fb, title_x - 2, ty - 2, title_w + 4, 11, 18);
+    boot_draw_text(fb, title_x, ty, title, 0);
+    boot_draw_text(fb, title_x + title_w, ty, version, 1);
 
-    /* Info */
-    int lx = panel_x + 6;
-    boot_draw_text(fb, lx, panel_y + 30, "Wolfenstein 3D for RP2350", 1);
-    boot_draw_text(fb, lx, panel_y + 42, "by Mikhail Matveev", 1);
+    int lx = WS_PX + 6;
+    boot_draw_text(fb, lx, ty + 18, "Wolfenstein 3D for RP2350", 1);
+    boot_draw_text(fb, lx, ty + 28, "by Mikhail Matveev", 1);
 
-    /* System info */
     char buf[64];
 #if defined(BOARD_M2)
     const char *board = "M2";
@@ -390,21 +383,26 @@ static void wolf_show_welcome(uint8_t *fb) {
 #endif
     snprintf(buf, sizeof(buf), "%s, CPU: %d MHz, PSRAM: %d MHz",
              board, CPU_CLOCK_MHZ, PSRAM_MAX_FREQ_MHZ);
-    int by = panel_y + panel_h - 32;
-    boot_draw_text(fb, lx, by, buf, 1);
-    boot_draw_text(fb, lx, by + 10, "github.com/rh1tech/frank-wolf3d", 1);
-    boot_draw_text(fb, lx, by + 20, "Press any key...", 1);
+    boot_draw_text(fb, lx, ty + 46, buf, 1);
+    boot_draw_text(fb, lx, ty + 56, "github.com/rh1tech/frank-wolf3d", 1);
+    boot_draw_text(fb, lx, ty + 72, "Press any key...", 1);
 }
 
 static void wolf_show_error(uint8_t *fb, const char *line1, const char *line2) {
     boot_setup_palette();
     graphics_set_palette(19, 0x880000);  /* dark red for error background */
-    memset(fb, 0, WOLF_RESX * HDMI_RESY);
 
-    const int panel_x = 24, panel_y = 80;
-    const int panel_w = WOLF_RESX - 48, panel_h = 80;
+    /* Static cyan background */
+    for (int y = 0; y < HDMI_RESY; ++y)
+        for (int x = 0; x < WOLF_RESX; ++x) {
+            int bx = x >> 3, by = y >> 3;
+            uint8_t v = (uint8_t)((bx + by) & 0x0F);
+            v ^= (uint8_t)(((bx << 1) ^ by) & 0x07);
+            fb[y * WOLF_RESX + x] = (uint8_t)(2 + (v & 0x0F));
+        }
 
-    boot_draw_animated_border(fb, 0, panel_x, panel_y, panel_w, panel_h);
+    const int panel_x = 40, panel_y = 80;
+    const int panel_w = WOLF_RESX - 80, panel_h = 80;
     boot_fill_rect(fb, panel_x, panel_y, panel_w, panel_h, 19);
 
     int lx = panel_x + 6;
@@ -494,11 +492,17 @@ void wolf_rp2350_init(void) {
     extern void stdio_fatfs_init(void);
     stdio_fatfs_init();
 
-    /* ---- Welcome screen ---- */
-    wolf_show_welcome(hdmi_framebuffer);
+    /* ---- Welcome screen with animated background ---- */
+    boot_setup_palette();
+    memset(hdmi_framebuffer, 0, WOLF_RESX * HDMI_RESY);
+    wolf_draw_welcome_panel(hdmi_framebuffer);  /* panel text drawn once */
 
-    /* Wait for keypress */
     for (;;) {
+        /* Only redraw the animated border — panel area is skipped */
+        boot_draw_animated_bg(hdmi_framebuffer,
+                              to_ms_since_boot(get_absolute_time()),
+                              WS_PX, WS_PY, WS_PW, WS_PH);
+
         for (int t = 0; t < 16; t++) ps2kbd_poll();
         int pressed;
         unsigned char hid_code;
