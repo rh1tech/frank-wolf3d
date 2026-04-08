@@ -90,10 +90,15 @@ void VWB_DrawPic (int x, int y, int chunknum)
 	int	picnum = chunknum - STARTPICS;
 	unsigned width,height;
 
+	if (!grsegs[chunknum]) return;
+
 	x &= ~7;
 
 	width = pictable[picnum].width;
 	height = pictable[picnum].height;
+
+	if (width == 0 || height == 0 || width > 320 || height > 200) return;
+	if (y + (int)height > 200) height = 200 - y;
 
 	VL_MemToScreen (grsegs[chunknum],width,height,x,y);
 }
@@ -103,8 +108,12 @@ void VWB_DrawPicScaledCoord (int scx, int scy, int chunknum)
 	int	picnum = chunknum - STARTPICS;
 	unsigned width,height;
 
+	if (!grsegs[chunknum]) return;
+
 	width = pictable[picnum].width;
 	height = pictable[picnum].height;
+
+	if (width == 0 || height == 0 || width > 320 || height > 200) return;
 
     VL_MemToScreenScaledCoord (grsegs[chunknum],width,height,scx,scy);
 }

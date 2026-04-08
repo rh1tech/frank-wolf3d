@@ -488,8 +488,14 @@ void CAL_SetupGrFile (void)
             fname, headersize / 3, expectedsize);
 
     byte data[lengthof(grstarts) * 3];
-    fread (data,sizeof(data),1,file);
+    memset(data, 0xFF, sizeof(data));  // default all offsets to -1 (sparse)
+    int32_t readsize = headersize;
+    if (readsize > (int32_t)sizeof(data)) readsize = (int32_t)sizeof(data);
+    fread (data, readsize, 1, file);
     fclose (file);
+
+    printf("[GR] Read %ld bytes from vgahead (%d chunks in file, %d expected)\n",
+           (long)readsize, (int)(headersize / 3), (int)lengthof(grstarts));
 
     byte *d = data;
     int32_t* i;
@@ -626,6 +632,9 @@ void CAL_SetupAudioFile (void)
 
     CA_LoadFile (fname,(void **)&audiostarts);
 
+    printf("[CA] Loaded %s, NUMSNDCHUNKS=%d\n", fname, NUMSNDCHUNKS);
+    fflush(stdout);
+
 //
 // open the data file
 //
@@ -739,6 +748,13 @@ int32_t CA_CacheAudioChunk (int chunk)
     if (audiosegs[chunk])
         return size;                        // already in memory
 
+    if (pos < 0 || size <= 0 || size > 512 * 1024) {
+        printf("[CA] SKIP audio chunk %d: bad offset %ld / size %ld\n",
+               chunk, (long)pos, (long)size);
+        audiosegs[chunk] = NULL;
+        return 0;
+    }
+
     audiosegs[chunk] = SafeMalloc(size);
 
     fseek (audiofile,pos,SEEK_SET);
@@ -756,6 +772,13 @@ void CA_CacheAdlibSoundChunk (int chunk)
 
     if (audiosegs[chunk])
         return;                        // already in memory
+
+    if (pos < 0 || size <= 0 || size > 512 * 1024) {
+        printf("[CA] SKIP adlib chunk %d: bad offset %ld / size %ld\n",
+               chunk, (long)pos, (long)size);
+        audiosegs[chunk] = NULL;
+        return;
+    }
 
     fseek (audiofile,pos,SEEK_SET);
 
@@ -908,6 +931,11 @@ void CAL_ExpandGrChunk (int chunk, int32_t *source)
     //
 #ifdef PICO_ON_DEVICE
     printf("[GR] expand chunk %d: %ld bytes\n", chunk, (long)expanded);
+    if (expanded <= 0 || expanded > 256 * 1024) {
+        printf("[GR] SKIP chunk %d: bad expanded size %ld\n", chunk, (long)expanded);
+        grsegs[chunk] = NULL;
+        return;
+    }
 #endif
     grsegs[chunk] = SafeMalloc(expanded);
 
@@ -1010,7 +1038,7 @@ void CA_CacheGrChunks (FILE *grfile)
 
         CAL_ExpandGrChunk (chunk,source);
 
-        if (chunk >= STARTPICS && chunk < STARTEXTERNS)
+        if (grsegs[chunk] && chunk >= STARTPICS && chunk < STARTEXTERNS)
             CAL_DeplaneGrChunk (chunk);
 
 #ifdef PICO_ON_DEVICE

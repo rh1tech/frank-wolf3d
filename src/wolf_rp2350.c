@@ -160,7 +160,7 @@ int unlink(const char *path) {
     return (fr == FR_OK) ? 0 : -1;
 }
 
-int _stat(const char *path, struct stat *buf) {
+int __wrap_stat(const char *path, struct stat *buf) {
     FILINFO fno;
     FRESULT fr = f_stat(path, &fno);
     if (fr != FR_OK) return -1;

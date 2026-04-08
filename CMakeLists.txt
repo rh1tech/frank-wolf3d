@@ -125,8 +125,9 @@ target_compile_definitions(frank-wolf PRIVATE
     CPU_CLOCK_MHZ=${CPU_SPEED}
     CPU_VOLTAGE=${CPU_VOLTAGE}
     PSRAM_MAX_FREQ_MHZ=${PSRAM_SPEED}
-    # Wolf3D version config (UPLOAD = shareware WL1, GOODTIMES = full WL6)
-    UPLOAD
+    # Wolf3D version: auto-detect WL6/WL3/WL1 at runtime (Apogee format)
+    # For Steam/GOG WL6: add GOODTIMES (uses gfxv_wl6.h, 149 chunks)
+    # For Spear of Destiny: add SPEAR (uses gfxv_sod.h)
     CARMACIZED
     VERSIONALREADYCHOSEN
     DEBUGKEYS
@@ -194,6 +195,7 @@ target_link_options(frank-wolf PRIVATE
     -Wl,--wrap=ftell
     -Wl,--wrap=remove
     -Wl,--wrap=rename
+    -Wl,--wrap=stat
 )
 
 # USB stdio

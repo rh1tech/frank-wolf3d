@@ -14,7 +14,6 @@
 #include "wl_def.h"
 #include "mame/fmopl.h"
 #include "audio.h"
-#include "psram_allocator.h"
 
 #include <string.h>
 
@@ -103,10 +102,13 @@ static int pc_phase = 0;
 
 #define NUM_DIGI_CHANNELS 6
 
+/* Fixed-point 16.16 resampling: step = ORIGSAMPLERATE / param_samplerate */
+static uint32_t digi_step;   /* set in SD_Startup */
+
 typedef struct {
-    const int16_t *samples;
-    int      num_samples;
-    int      pos;
+    const byte *data;         /* raw 8-bit unsigned PCM at 7042 Hz */
+    int      length;          /* number of raw samples */
+    uint32_t frac_pos;        /* 16.16 fixed-point position into raw data */
     uint8_t  left_vol;
     uint8_t  right_vol;
     volatile boolean active;
@@ -114,10 +116,10 @@ typedef struct {
 
 static digi_channel_t digi_channels[NUM_DIGI_CHANNELS];
 
-/* Pre-converted digitized sounds (resampled from 7042 Hz to param_samplerate) */
+/* Pointers to raw digi sound data (inside VSWAP pages, zero-copy) */
 typedef struct {
-    int16_t *samples;
-    int      num_samples;
+    const byte *data;
+    int         length;
 } sound_chunk_t;
 
 static sound_chunk_t SoundChunks[STARTMUSIC - STARTDIGISOUNDS];
@@ -198,8 +200,9 @@ int SD_GetChannelForDigi(int which) {
     int best = 2;
     int best_progress = 0;
     for (int i = 2; i < NUM_DIGI_CHANNELS; i++) {
-        int progress = digi_channels[i].num_samples > 0
-            ? (digi_channels[i].pos * 100) / digi_channels[i].num_samples
+        int idx = (int)(digi_channels[i].frac_pos >> 16);
+        int progress = digi_channels[i].length > 0
+            ? (idx * 100) / digi_channels[i].length
             : 100;
         if (progress > best_progress) {
             best_progress = progress;
@@ -220,58 +223,24 @@ void SD_SetPosition(int channel, int leftpos, int rightpos) {
     }
 }
 
-Sint16 GetSample(float csample, byte *samples, int size) {
-    float s0 = 0, s1 = 0, s2 = 0;
-    int cursample = (int)csample;
-    float sf = csample - (float)cursample;
-
-    if (cursample - 1 >= 0) s0 = (float)(samples[cursample - 1] - 128);
-    s1 = (float)(samples[cursample] - 128);
-    if (cursample + 1 < size) s2 = (float)(samples[cursample + 1] - 128);
-
-    float val = s0 * sf * (sf - 1) / 2 - s1 * (sf * sf - 1) + s2 * (sf + 1) * sf / 2;
-    int32_t intval = (int32_t)(val * 256);
-    if (intval < -32768) intval = -32768;
-    else if (intval > 32767) intval = 32767;
-    return (Sint16)intval;
-}
-
 void SD_PrepareSound(int which) {
     if (DigiList == NULL)
         Quit("SD_PrepareSound(%i): DigiList not initialized!\n", which);
 
-    /* Free any previous conversion */
-    if (SoundChunks[which].samples) {
-        psram_free(SoundChunks[which].samples);
-        SoundChunks[which].samples = NULL;
-        SoundChunks[which].num_samples = 0;
-    }
+    if (which < 0 || which >= STARTMUSIC - STARTDIGISOUNDS)
+        return;
 
     int page = DigiList[which].startpage;
     int size = DigiList[which].length;
 
     byte *origsamples = PM_GetSoundPage(page);
-    if (origsamples + size >= PM_GetPageEnd())
-        Quit("SD_PrepareSound(%i): Sound reaches out of page file!\n", which);
-
-    int destsamples = (int)((float)size * (float)param_samplerate
-        / (float)ORIGSAMPLERATE);
-
-    int16_t *newsamples = (int16_t *)psram_malloc(destsamples * sizeof(int16_t));
-    if (!newsamples) {
-        printf("SD_PrepareSound(%i): Out of PSRAM (%d samples)!\n",
-               which, destsamples);
+    if (!origsamples || origsamples + size >= PM_GetPageEnd())
         return;
-    }
 
-    /* Resample with cubic interpolation (same algorithm as SDL version) */
-    for (int i = 0; i < destsamples; i++) {
-        newsamples[i] = GetSample((float)size * (float)i / (float)destsamples,
-            origsamples, size);
-    }
-
-    SoundChunks[which].samples = newsamples;
-    SoundChunks[which].num_samples = destsamples;
+    /* Zero-copy: just point to the raw 8-bit data in VSWAP pages.
+     * Resampling from 7042 Hz to 44100 Hz happens in the mixer. */
+    SoundChunks[which].data   = origsamples;
+    SoundChunks[which].length = size;
 }
 
 int SD_PlayDigitized(word which, int leftpos, int rightpos) {
@@ -287,15 +256,14 @@ int SD_PlayDigitized(word which, int leftpos, int rightpos) {
     DigiPlaying = true;
 
     sound_chunk_t *chunk = &SoundChunks[which];
-    if (!chunk->samples || !chunk->num_samples) {
-        printf("SoundChunks[%i] is NULL!\n", which);
+    if (!chunk->data || !chunk->length) {
         return 0;
     }
 
-    digi_channels[channel].samples     = chunk->samples;
-    digi_channels[channel].num_samples = chunk->num_samples;
-    digi_channels[channel].pos         = 0;
-    digi_channels[channel].active      = true;
+    digi_channels[channel].data     = chunk->data;
+    digi_channels[channel].length   = chunk->length;
+    digi_channels[channel].frac_pos = 0;
+    digi_channels[channel].active   = true;
 
     return channel;
 }
@@ -532,15 +500,21 @@ static void wolf_audio_fill(int buf_index, uint32_t *buf, uint32_t frames) {
                 }
                 pc_remaining--;
 
-                /* ---- Digitized sound mixing ---- */
+                /* ---- Digitized sound mixing (real-time 7042→44100 resample) ---- */
                 for (int ch = 0; ch < NUM_DIGI_CHANNELS; ch++) {
                     if (digi_channels[ch].active) {
-                        int pos = digi_channels[ch].pos;
-                        if (pos < digi_channels[ch].num_samples) {
-                            int16_t s = digi_channels[ch].samples[pos];
+                        uint32_t fp = digi_channels[ch].frac_pos;
+                        int idx = (int)(fp >> 16);
+                        if (idx < digi_channels[ch].length) {
+                            /* Linear interpolation between adjacent 8-bit samples */
+                            int s0 = (int)digi_channels[ch].data[idx] - 128;
+                            int s1 = (idx + 1 < digi_channels[ch].length)
+                                   ? (int)digi_channels[ch].data[idx + 1] - 128 : s0;
+                            int frac = (fp >> 8) & 0xFF; /* 8-bit fraction */
+                            int32_t s = (s0 * (256 - frac) + s1 * frac); /* 16-bit result */
                             left  += (s * digi_channels[ch].left_vol) >> 10;
                             right += (s * digi_channels[ch].right_vol) >> 10;
-                            digi_channels[ch].pos = pos + 1;
+                            digi_channels[ch].frac_pos = fp + digi_step;
                         } else {
                             digi_channels[ch].active = false;
                         }
@@ -693,6 +667,9 @@ void SD_Startup(void) {
 
     alTimeCount = 0;
 
+    /* Fixed-point resample step: ORIGSAMPLERATE / param_samplerate in 16.16 */
+    digi_step = ((uint32_t)ORIGSAMPLERATE << 16) / (uint32_t)param_samplerate;
+
     /* Clear audio state */
     memset(digi_channels, 0, sizeof(digi_channels));
     memset(SoundChunks, 0, sizeof(SoundChunks));
@@ -718,16 +695,8 @@ void SD_Shutdown(void) {
     SD_MusicOff();
     SD_StopSound();
 
-    /* Stop I2S DMA before freeing any audio data */
+    /* Stop I2S DMA before any cleanup */
     i2s_set_fill_callback(NULL);
-
-    /* Free pre-converted digitized sounds */
-    for (int i = 0; i < STARTMUSIC - STARTDIGISOUNDS; i++) {
-        if (SoundChunks[i].samples) {
-            psram_free(SoundChunks[i].samples);
-            SoundChunks[i].samples = NULL;
-        }
-    }
 
     free(DigiList);
     DigiList = NULL;

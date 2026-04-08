@@ -1224,24 +1224,16 @@ static void InitGame()
     GP2X_MemoryInit();
 #endif
 
-    printf("[INIT] SignonScreen...\n");
     SignonScreen ();
 
 	VW_UpdateScreen();
 
-    printf("[INIT] VH_Startup...\n");
     VH_Startup ();
-    printf("[INIT] IN_Startup...\n");
     IN_Startup ();
-    printf("[INIT] PM_Startup...\n");
     PM_Startup ();
-    printf("[INIT] SD_Startup...\n");
     SD_Startup ();
-    printf("[INIT] CA_Startup...\n");
     CA_Startup ();
-    printf("[INIT] US_Startup...\n");
     US_Startup ();
-    printf("[INIT] Subsystems ready\n");
 
     // TODO: Will any memory checking be needed someday??
 #ifdef NOTYET
@@ -1813,6 +1805,7 @@ int main(int argc, char *argv[])
     // Hardware already initialized by src/main.c
     param_nowait = true;  // Skip startup delays
     param_samplerate = 44100;
+    param_ignorenumchunks = true;  // Tolerate WL1/WL3/WL6 chunk count differences
 #else
     CheckParameters(argc, argv);
 #endif
