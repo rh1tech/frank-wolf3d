@@ -172,6 +172,249 @@ int __wrap_stat(const char *path, struct stat *buf) {
 }
 
 /*==========================================================================
+ * 5x7 bitmap font for welcome/error screens (before Wolf3D engine starts)
+ *==========================================================================*/
+
+static const uint8_t *glyph_5x7(char ch) {
+    static const uint8_t g_space[7] = {0,0,0,0,0,0,0};
+    static const uint8_t g_dot[7]   = {0x00,0x00,0x00,0x00,0x00,0x0C,0x0C};
+    static const uint8_t g_comma[7] = {0x00,0x00,0x00,0x00,0x0C,0x0C,0x08};
+    static const uint8_t g_colon[7] = {0x00,0x0C,0x0C,0x00,0x0C,0x0C,0x00};
+    static const uint8_t g_hyph[7]  = {0x00,0x00,0x00,0x1F,0x00,0x00,0x00};
+    static const uint8_t g_lp[7]    = {0x04,0x08,0x08,0x08,0x08,0x08,0x04};
+    static const uint8_t g_rp[7]    = {0x04,0x02,0x02,0x02,0x02,0x02,0x04};
+    static const uint8_t g_slash[7] = {0x01,0x02,0x04,0x08,0x10,0x00,0x00};
+    static const uint8_t g_excl[7]  = {0x04,0x04,0x04,0x04,0x04,0x00,0x04};
+    static const uint8_t g_0[7]={0x0E,0x11,0x13,0x15,0x19,0x11,0x0E};
+    static const uint8_t g_1[7]={0x04,0x0C,0x04,0x04,0x04,0x04,0x0E};
+    static const uint8_t g_2[7]={0x0E,0x11,0x01,0x02,0x04,0x08,0x1F};
+    static const uint8_t g_3[7]={0x1E,0x01,0x01,0x0E,0x01,0x01,0x1E};
+    static const uint8_t g_4[7]={0x02,0x06,0x0A,0x12,0x1F,0x02,0x02};
+    static const uint8_t g_5[7]={0x1F,0x10,0x10,0x1E,0x01,0x01,0x1E};
+    static const uint8_t g_6[7]={0x0E,0x10,0x10,0x1E,0x11,0x11,0x0E};
+    static const uint8_t g_7[7]={0x1F,0x01,0x02,0x04,0x08,0x08,0x08};
+    static const uint8_t g_8[7]={0x0E,0x11,0x11,0x0E,0x11,0x11,0x0E};
+    static const uint8_t g_9[7]={0x0E,0x11,0x11,0x0F,0x01,0x01,0x0E};
+    /* uppercase */
+    static const uint8_t g_A[7]={0x0E,0x11,0x11,0x1F,0x11,0x11,0x11};
+    static const uint8_t g_B[7]={0x1E,0x11,0x11,0x1E,0x11,0x11,0x1E};
+    static const uint8_t g_C[7]={0x0E,0x11,0x10,0x10,0x10,0x11,0x0E};
+    static const uint8_t g_D[7]={0x1E,0x11,0x11,0x11,0x11,0x11,0x1E};
+    static const uint8_t g_E[7]={0x1F,0x10,0x10,0x1E,0x10,0x10,0x1F};
+    static const uint8_t g_F[7]={0x1F,0x10,0x10,0x1E,0x10,0x10,0x10};
+    static const uint8_t g_G[7]={0x0E,0x11,0x10,0x17,0x11,0x11,0x0E};
+    static const uint8_t g_H[7]={0x11,0x11,0x11,0x1F,0x11,0x11,0x11};
+    static const uint8_t g_I[7]={0x1F,0x04,0x04,0x04,0x04,0x04,0x1F};
+    static const uint8_t g_J[7]={0x07,0x02,0x02,0x02,0x12,0x12,0x0C};
+    static const uint8_t g_K[7]={0x11,0x12,0x14,0x18,0x14,0x12,0x11};
+    static const uint8_t g_L[7]={0x10,0x10,0x10,0x10,0x10,0x10,0x1F};
+    static const uint8_t g_M[7]={0x11,0x1B,0x15,0x15,0x11,0x11,0x11};
+    static const uint8_t g_N[7]={0x11,0x19,0x15,0x13,0x11,0x11,0x11};
+    static const uint8_t g_O[7]={0x0E,0x11,0x11,0x11,0x11,0x11,0x0E};
+    static const uint8_t g_P[7]={0x1E,0x11,0x11,0x1E,0x10,0x10,0x10};
+    static const uint8_t g_Q[7]={0x0E,0x11,0x11,0x11,0x15,0x12,0x0D};
+    static const uint8_t g_R[7]={0x1E,0x11,0x11,0x1E,0x14,0x12,0x11};
+    static const uint8_t g_S[7]={0x0F,0x10,0x10,0x0E,0x01,0x01,0x1E};
+    static const uint8_t g_T[7]={0x1F,0x04,0x04,0x04,0x04,0x04,0x04};
+    static const uint8_t g_U[7]={0x11,0x11,0x11,0x11,0x11,0x11,0x0E};
+    static const uint8_t g_V[7]={0x11,0x11,0x11,0x11,0x0A,0x0A,0x04};
+    static const uint8_t g_W[7]={0x11,0x11,0x11,0x15,0x15,0x15,0x0A};
+    static const uint8_t g_X[7]={0x11,0x0A,0x04,0x04,0x04,0x0A,0x11};
+    static const uint8_t g_Y[7]={0x11,0x0A,0x04,0x04,0x04,0x04,0x04};
+    static const uint8_t g_Z[7]={0x1F,0x02,0x04,0x08,0x10,0x10,0x1F};
+    /* lowercase */
+    static const uint8_t g_a[7]={0x00,0x00,0x0E,0x01,0x0F,0x11,0x0F};
+    static const uint8_t g_b[7]={0x10,0x10,0x1E,0x11,0x11,0x11,0x1E};
+    static const uint8_t g_c[7]={0x00,0x00,0x0E,0x11,0x10,0x11,0x0E};
+    static const uint8_t g_d[7]={0x01,0x01,0x0D,0x13,0x11,0x13,0x0D};
+    static const uint8_t g_e[7]={0x00,0x00,0x0E,0x11,0x1F,0x10,0x0F};
+    static const uint8_t g_f[7]={0x06,0x08,0x1E,0x08,0x08,0x08,0x08};
+    static const uint8_t g_g[7]={0x00,0x00,0x0F,0x11,0x0F,0x01,0x0E};
+    static const uint8_t g_h[7]={0x10,0x10,0x1E,0x11,0x11,0x11,0x11};
+    static const uint8_t g_i[7]={0x04,0x00,0x0C,0x04,0x04,0x04,0x0E};
+    static const uint8_t g_j[7]={0x02,0x00,0x06,0x02,0x02,0x12,0x0C};
+    static const uint8_t g_k[7]={0x10,0x10,0x11,0x12,0x1C,0x12,0x11};
+    static const uint8_t g_l[7]={0x08,0x08,0x08,0x08,0x08,0x08,0x06};
+    static const uint8_t g_m[7]={0x00,0x00,0x1A,0x15,0x15,0x15,0x15};
+    static const uint8_t g_n[7]={0x00,0x00,0x1E,0x11,0x11,0x11,0x11};
+    static const uint8_t g_o[7]={0x00,0x00,0x0E,0x11,0x11,0x11,0x0E};
+    static const uint8_t g_p[7]={0x00,0x00,0x1E,0x11,0x1E,0x10,0x10};
+    static const uint8_t g_q[7]={0x00,0x00,0x0D,0x13,0x13,0x0D,0x01};
+    static const uint8_t g_r[7]={0x00,0x00,0x16,0x19,0x10,0x10,0x10};
+    static const uint8_t g_s[7]={0x00,0x00,0x0F,0x10,0x0E,0x01,0x1E};
+    static const uint8_t g_t[7]={0x04,0x04,0x1F,0x04,0x04,0x04,0x03};
+    static const uint8_t g_u[7]={0x00,0x00,0x11,0x11,0x11,0x13,0x0D};
+    static const uint8_t g_v[7]={0x00,0x00,0x11,0x11,0x11,0x0A,0x04};
+    static const uint8_t g_w[7]={0x00,0x00,0x11,0x11,0x15,0x15,0x0A};
+    static const uint8_t g_x[7]={0x00,0x00,0x11,0x0A,0x04,0x0A,0x11};
+    static const uint8_t g_y[7]={0x00,0x00,0x11,0x11,0x0F,0x01,0x0E};
+    static const uint8_t g_z[7]={0x00,0x00,0x1F,0x02,0x04,0x08,0x1F};
+    switch ((unsigned char)ch) {
+        case ' ': return g_space; case '.': return g_dot; case ',': return g_comma;
+        case ':': return g_colon; case '-': return g_hyph; case '(': return g_lp;
+        case ')': return g_rp; case '/': return g_slash; case '!': return g_excl;
+        case '0': return g_0; case '1': return g_1; case '2': return g_2;
+        case '3': return g_3; case '4': return g_4; case '5': return g_5;
+        case '6': return g_6; case '7': return g_7; case '8': return g_8;
+        case '9': return g_9;
+        case 'A': return g_A; case 'B': return g_B; case 'C': return g_C;
+        case 'D': return g_D; case 'E': return g_E; case 'F': return g_F;
+        case 'G': return g_G; case 'H': return g_H; case 'I': return g_I;
+        case 'J': return g_J; case 'K': return g_K; case 'L': return g_L;
+        case 'M': return g_M; case 'N': return g_N; case 'O': return g_O;
+        case 'P': return g_P; case 'Q': return g_Q; case 'R': return g_R;
+        case 'S': return g_S; case 'T': return g_T; case 'U': return g_U;
+        case 'V': return g_V; case 'W': return g_W; case 'X': return g_X;
+        case 'Y': return g_Y; case 'Z': return g_Z;
+        case 'a': return g_a; case 'b': return g_b; case 'c': return g_c;
+        case 'd': return g_d; case 'e': return g_e; case 'f': return g_f;
+        case 'g': return g_g; case 'h': return g_h; case 'i': return g_i;
+        case 'j': return g_j; case 'k': return g_k; case 'l': return g_l;
+        case 'm': return g_m; case 'n': return g_n; case 'o': return g_o;
+        case 'p': return g_p; case 'q': return g_q; case 'r': return g_r;
+        case 's': return g_s; case 't': return g_t; case 'u': return g_u;
+        case 'v': return g_v; case 'w': return g_w; case 'x': return g_x;
+        case 'y': return g_y; case 'z': return g_z;
+        default: return g_space;
+    }
+}
+
+static void boot_draw_char(uint8_t *fb, int x, int y, char ch, uint8_t color) {
+    const uint8_t *rows = glyph_5x7(ch);
+    for (int row = 0; row < 7; ++row) {
+        int yy = y + row;
+        if (yy < 0 || yy >= HDMI_RESY) continue;
+        uint8_t bits = rows[row];
+        for (int col = 0; col < 5; ++col) {
+            int xx = x + col;
+            if (xx < 0 || xx >= WOLF_RESX) continue;
+            if (bits & (1u << (4 - col)))
+                fb[yy * WOLF_RESX + xx] = color;
+        }
+    }
+}
+
+static void boot_draw_text(uint8_t *fb, int x, int y, const char *text, uint8_t color) {
+    for (const char *p = text; *p; ++p) {
+        boot_draw_char(fb, x, y, *p, color);
+        x += 6;
+    }
+}
+
+static void boot_fill_rect(uint8_t *fb, int x, int y, int w, int h, uint8_t color) {
+    if (x < 0) { w += x; x = 0; }
+    if (y < 0) { h += y; y = 0; }
+    if (x + w > WOLF_RESX) w = WOLF_RESX - x;
+    if (y + h > HDMI_RESY) h = HDMI_RESY - y;
+    if (w <= 0 || h <= 0) return;
+    for (int yy = y; yy < y + h; ++yy)
+        memset(&fb[yy * WOLF_RESX + x], color, (size_t)w);
+}
+
+static int boot_text_width(const char *text) {
+    int n = 0;
+    for (const char *p = text; *p; ++p) n++;
+    return n * 6;
+}
+
+static void boot_draw_animated_border(uint8_t *fb, uint32_t t_ms,
+                                      int px, int py, int pw, int ph) {
+    const int t = (int)(t_ms / 80);
+    const int px2 = px + pw, py2 = py + ph;
+    for (int y = 0; y < HDMI_RESY; ++y) {
+        for (int x = 0; x < WOLF_RESX; ++x) {
+            if (x >= px && x < px2 && y >= py && y < py2) continue;
+            int bx = x >> 3, by = y >> 3;
+            uint8_t v = (uint8_t)((bx + by + t) & 0x0F);
+            v ^= (uint8_t)(((bx << 1) ^ (by + (t >> 1))) & 0x07);
+            fb[y * WOLF_RESX + x] = (uint8_t)(2 + (v & 0x0F));
+        }
+    }
+}
+
+/* Cyan-themed Wolf3D welcome screen palette */
+static void boot_setup_palette(void) {
+    graphics_set_palette(0, 0x000000);  /* black */
+    graphics_set_palette(1, 0xFFFFFF);  /* white text */
+    /* Indices 2-17: dark Wolf3D cyans for animated border */
+    static const uint32_t wolf_bg_pal[16] = {
+        0x000105, 0x000208, 0x00030B, 0x00040E,
+        0x000512, 0x000616, 0x00071A, 0x00081E,
+        0x000922, 0x000A26, 0x000B2A, 0x000C2E,
+        0x000D33, 0x000E38, 0x000F3D, 0x001042,
+    };
+    for (int i = 0; i < 16; ++i)
+        graphics_set_palette(2 + i, wolf_bg_pal[i]);
+    /* Title highlight: bright cyan */
+    graphics_set_palette(18, 0x001450);
+}
+
+#ifndef FRANK_WOLF_VERSION
+#define FRANK_WOLF_VERSION "?"
+#endif
+
+static void wolf_show_welcome(uint8_t *fb) {
+    boot_setup_palette();
+    memset(fb, 0, WOLF_RESX * HDMI_RESY);
+
+    const int panel_x = 24, panel_y = 24;
+    const int panel_w = WOLF_RESX - 48, panel_h = HDMI_RESY - 48;
+
+    boot_draw_animated_border(fb, to_ms_since_boot(get_absolute_time()),
+                              panel_x, panel_y, panel_w, panel_h);
+    boot_fill_rect(fb, panel_x, panel_y, panel_w, panel_h, 0);
+
+    /* Title */
+    const char *title = "FRANK WOLF3D";
+    char version[64];
+    snprintf(version, sizeof(version), " v%s", FRANK_WOLF_VERSION);
+    int title_w = boot_text_width(title);
+    int version_w = boot_text_width(version);
+    int title_x = (WOLF_RESX - title_w - version_w) / 2;
+    int title_y = panel_y + 10;
+    boot_fill_rect(fb, title_x - 2, title_y - 2, title_w + 4, 11, 18);
+    boot_draw_text(fb, title_x, title_y, title, 0);
+    boot_draw_text(fb, title_x + title_w, title_y, version, 1);
+
+    /* Info */
+    int lx = panel_x + 6;
+    boot_draw_text(fb, lx, panel_y + 30, "Wolfenstein 3D for RP2350", 1);
+    boot_draw_text(fb, lx, panel_y + 42, "by Mikhail Matveev", 1);
+
+    /* System info */
+    char buf[64];
+#if defined(BOARD_M2)
+    const char *board = "M2";
+#else
+    const char *board = "M1";
+#endif
+    snprintf(buf, sizeof(buf), "%s, CPU: %d MHz, PSRAM: %d MHz",
+             board, CPU_CLOCK_MHZ, PSRAM_MAX_FREQ_MHZ);
+    int by = panel_y + panel_h - 32;
+    boot_draw_text(fb, lx, by, buf, 1);
+    boot_draw_text(fb, lx, by + 10, "github.com/rh1tech/frank-wolf3d", 1);
+    boot_draw_text(fb, lx, by + 20, "Press any key...", 1);
+}
+
+static void wolf_show_error(uint8_t *fb, const char *line1, const char *line2) {
+    boot_setup_palette();
+    graphics_set_palette(19, 0x880000);  /* dark red for error background */
+    memset(fb, 0, WOLF_RESX * HDMI_RESY);
+
+    const int panel_x = 24, panel_y = 80;
+    const int panel_w = WOLF_RESX - 48, panel_h = 80;
+
+    boot_draw_animated_border(fb, 0, panel_x, panel_y, panel_w, panel_h);
+    boot_fill_rect(fb, panel_x, panel_y, panel_w, panel_h, 19);
+
+    int lx = panel_x + 6;
+    boot_draw_text(fb, lx, panel_y + 10, "ERROR", 1);
+    if (line1) boot_draw_text(fb, lx, panel_y + 30, line1, 1);
+    if (line2) boot_draw_text(fb, lx, panel_y + 42, line2, 1);
+    boot_draw_text(fb, lx, panel_y + 60, "Insert SD card and reset.", 1);
+}
+
+/*==========================================================================
  * Hardware initialization
  *==========================================================================*/
 
@@ -203,27 +446,6 @@ void wolf_rp2350_init(void) {
     graphics_set_buffer(hdmi_framebuffer);
     graphics_init(g_out_HDMI);
 
-    printf("Initializing SD card...\n");
-    FRESULT fr = f_mount(&fatfs, "", 1);
-    if (fr != FR_OK) {
-        printf("ERROR: Failed to mount SD card (error %d)\n", fr);
-        while (1) tight_loop_contents();
-    }
-    printf("SD card mounted successfully\n");
-
-    // Change to wolf3d data directory if it exists, otherwise stay in root
-    FILINFO fno;
-    if (f_stat("wolf3d", &fno) == FR_OK && (fno.fattrib & AM_DIR)) {
-        f_chdir("wolf3d");
-        printf("Using data directory: /wolf3d/\n");
-    } else {
-        printf("Using data directory: / (root)\n");
-    }
-
-    // Initialize stdio_fatfs wrappers
-    extern void stdio_fatfs_init(void);
-    stdio_fatfs_init();
-
     printf("Initializing PS/2 keyboard...\n");
     ps2kbd_init();
 
@@ -238,10 +460,56 @@ void wolf_rp2350_init(void) {
     audio_config.volume = 0;
     i2s_init(&audio_config);
 
-    // Clear keyboard state
     memset((void *)ps2_key_states, 0, sizeof(ps2_key_states));
 
-    boot_time = get_absolute_time();
+    /* ---- SD card mount ---- */
+    printf("Initializing SD card...\n");
+    FRESULT fr = f_mount(&fatfs, "", 1);
+    if (fr != FR_OK) {
+        printf("ERROR: Failed to mount SD card (error %d)\n", fr);
+        char detail[48];
+        snprintf(detail, sizeof(detail), "SD mount failed (error %d)", fr);
+        wolf_show_error(hdmi_framebuffer, "No SD card detected!", detail);
+        while (1) tight_loop_contents();
+    }
 
+    /* Change to wolf3d data directory if it exists */
+    FILINFO fno;
+    if (f_stat("wolf3d", &fno) == FR_OK && (fno.fattrib & AM_DIR))
+        f_chdir("wolf3d");
+
+    /* Check that at least one VSWAP data file exists */
+    int has_data = 0;
+    if (f_stat("vswap.wl6", &fno) == FR_OK) has_data = 1;
+    else if (f_stat("vswap.wl3", &fno) == FR_OK) has_data = 1;
+    else if (f_stat("vswap.wl1", &fno) == FR_OK) has_data = 1;
+    if (!has_data) {
+        printf("ERROR: No Wolf3D data files found\n");
+        wolf_show_error(hdmi_framebuffer,
+                        "No Wolf3D data files found!",
+                        "Copy .wl6/.wl1 files to /wolf3d/");
+        while (1) tight_loop_contents();
+    }
+
+    extern void stdio_fatfs_init(void);
+    stdio_fatfs_init();
+
+    /* ---- Welcome screen ---- */
+    wolf_show_welcome(hdmi_framebuffer);
+
+    /* Wait for keypress */
+    for (;;) {
+        for (int t = 0; t < 16; t++) ps2kbd_poll();
+        int pressed;
+        unsigned char hid_code;
+        if (ps2kbd_get_key(&pressed, &hid_code) && pressed)
+            break;
+        sleep_ms(33);
+    }
+
+    /* Restore black screen before Wolf3D takes over */
+    memset(hdmi_framebuffer, 0, WOLF_RESX * HDMI_RESY);
+
+    boot_time = get_absolute_time();
     printf("Hardware initialization complete\n");
 }
