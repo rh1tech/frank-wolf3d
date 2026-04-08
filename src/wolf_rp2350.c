@@ -18,6 +18,7 @@
 #include "ff.h"
 #include "ps2kbd_wrapper.h"
 #include "ps2.h"
+#include "nespad.h"
 #include "audio.h"
 
 #include <stdio.h>
@@ -386,7 +387,8 @@ static void wolf_draw_welcome_panel(uint8_t *fb) {
              board, CPU_CLOCK_MHZ, PSRAM_MAX_FREQ_MHZ);
     boot_draw_text(fb, lx, ty + 46, buf, 1);
     boot_draw_text(fb, lx, ty + 56, "github.com/rh1tech/frank-wolf3d", 1);
-    boot_draw_text(fb, lx, ty + 72, "Press any key...", 1);
+    boot_draw_text(fb, lx, ty + 66, "Gamepad: NES", 1);
+    boot_draw_text(fb, lx, ty + 78, "Press any key or button...", 1);
 }
 
 static void wolf_show_error(uint8_t *fb, const char *line1, const char *line2) {
@@ -460,6 +462,14 @@ void wolf_rp2350_init(void) {
         printf("PS/2 mouse PIO init failed\n");
     }
 
+    printf("Initializing NES gamepad (pio0)...\n");
+    if (nespad_begin(pio0, clock_get_hz(clk_sys) / 1000,
+                     NESPAD_CLK_PIN, NESPAD_DATA_PIN, NESPAD_LATCH_PIN)) {
+        printf("NES gamepad initialized\n");
+    } else {
+        printf("NES gamepad init failed\n");
+    }
+
     printf("Initializing I2S audio...\n");
     memset(&audio_config, 0, sizeof(audio_config));
     audio_config.sample_freq = 44100;
@@ -520,6 +530,9 @@ void wolf_rp2350_init(void) {
         int pressed;
         unsigned char hid_code;
         if (ps2kbd_get_key(&pressed, &hid_code) && pressed)
+            break;
+        nespad_read();
+        if (nespad_state)
             break;
         sleep_ms(33);
     }

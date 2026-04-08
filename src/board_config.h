@@ -110,6 +110,11 @@ static inline uint get_psram_pin(void) {
 #define PS2_MOUSE_CLK  14
 #define PS2_MOUSE_DATA 15
 
+// NES Gamepad Pins
+#define NESPAD_CLK_PIN   20
+#define NESPAD_LATCH_PIN 21
+#define NESPAD_DATA_PIN  22
+
 // I2S Audio Pins
 #define I2S_DATA_PIN       26
 #define I2S_CLOCK_PIN_BASE 27
@@ -146,6 +151,11 @@ static inline uint get_psram_pin(void) {
 // PS/2 Mouse Pins
 #define PS2_MOUSE_CLK  0
 #define PS2_MOUSE_DATA 1
+
+// NES Gamepad Pins
+#define NESPAD_CLK_PIN   20
+#define NESPAD_LATCH_PIN 21
+#define NESPAD_DATA_PIN  26
 
 // I2S Audio Pins
 #define I2S_DATA_PIN       9

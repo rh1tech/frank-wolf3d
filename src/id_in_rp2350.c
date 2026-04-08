@@ -7,6 +7,7 @@
 #include "wl_def.h"
 #include "ps2kbd_wrapper.h"
 #include "ps2.h"
+#include "nespad.h"
 
 /*
 =============================================================================
@@ -151,6 +152,9 @@ void IN_ProcessEvents(void) {
         }
     }
 
+    // Poll NES gamepad
+    nespad_read();
+
     // Poll PS/2 mouse - accumulate deltas for SDL_GetRelativeMouseState
     if (ps2_mouse_is_initialized()) {
         int16_t dx, dy;
@@ -213,14 +217,41 @@ uint32_t SDL_GetRelativeMouseState(int *x, int *y) {
 
 /*
 =============================================================================
-                    Joystick stubs
+                    NES Gamepad / Joystick
 =============================================================================
 */
 
-void IN_GetJoyDelta(int *dx, int *dy) { *dx = *dy = 0; }
-void IN_GetJoyFineDelta(int *dx, int *dy) { *dx = *dy = 0; }
-int IN_JoyButtons(void) { return 0; }
-boolean IN_JoyPresent(void) { return false; }
+void IN_GetJoyDelta(int *dx, int *dy) {
+    // Map NES D-pad to digital joystick deltas (±127)
+    uint32_t pad = nespad_state;
+    *dx = 0;
+    *dy = 0;
+    if (pad & DPAD_LEFT)  *dx = -127;
+    if (pad & DPAD_RIGHT) *dx = 127;
+    if (pad & DPAD_UP)    *dy = -127;
+    if (pad & DPAD_DOWN)  *dy = 127;
+}
+
+void IN_GetJoyFineDelta(int *dx, int *dy) {
+    IN_GetJoyDelta(dx, dy);
+}
+
+int IN_JoyButtons(void) {
+    // Map NES face buttons to Wolf3D joystick button bits
+    // buttonjoy[0]=bt_attack, [1]=bt_strafe, [2]=bt_use, [3]=bt_run
+    uint32_t pad = nespad_state;
+    int buttons = 0;
+    if (pad & DPAD_B)      buttons |= 1;   // bit 0 -> bt_attack
+    if (pad & DPAD_A)      buttons |= 2;   // bit 1 -> bt_strafe
+    if (pad & DPAD_SELECT) buttons |= 4;   // bit 2 -> bt_use
+    if (pad & DPAD_START)  buttons |= 8;   // bit 3 -> bt_run
+    return buttons;
+}
+
+boolean IN_JoyPresent(void) {
+    return true;  // NES gamepad always wired on this hardware
+}
+
 void IN_CenterMouse(void) { mouse_accum_dx = 0; mouse_accum_dy = 0; }
 
 void IN_SetWindowGrab(SDL_Window *win) { (void)win; }
@@ -237,6 +268,7 @@ void IN_Startup(void) {
     IN_ClearKeysDown();
     MousePresent = ps2_mouse_is_initialized();
     GrabInput = true;  // Bare metal - always grab input
+    JoyNumButtons = 4;  // NES: B, A, Select, Start
 
     IN_Started = true;
 }
@@ -299,14 +331,46 @@ ScanCode IN_WaitForKey(void) {
 boolean btnstate[NUMBUTTONS];
 
 void IN_StartAck(void) {
+    int i;
+
     IN_ProcessEvents();
     IN_ClearKeysDown();
     memset(btnstate, 0, sizeof(btnstate));
+
+    int buttons = IN_JoyButtons() << 4;
+
+    if (MousePresent)
+        buttons |= IN_MouseButtons();
+
+    for (i = 0; i < NUMBUTTONS; i++, buttons >>= 1)
+        if (buttons & 1)
+            btnstate[i] = true;
 }
 
 boolean IN_CheckAck(void) {
+    int i;
+
     IN_ProcessEvents();
-    if (LastScan) return true;
+
+    if (LastScan)
+        return true;
+
+    int buttons = IN_JoyButtons() << 4;
+
+    if (MousePresent)
+        buttons |= IN_MouseButtons();
+
+    for (i = 0; i < NUMBUTTONS; i++, buttons >>= 1)
+    {
+        if (buttons & 1)
+        {
+            if (!btnstate[i])
+                return true;
+        }
+        else
+            btnstate[i] = false;
+    }
+
     return false;
 }
 

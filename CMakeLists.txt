@@ -42,6 +42,7 @@ add_subdirectory(src/fatfs)
 # Add drivers
 add_subdirectory(drivers/sdcard)
 add_subdirectory(drivers/ps2)
+add_subdirectory(drivers/nespad)
 add_subdirectory(src/ps2kbd)
 add_subdirectory(drivers/usbhid)
 
@@ -179,6 +180,7 @@ target_link_libraries(frank-wolf
     sdcard
     ps2_driver
     ps2kbd
+    nespad
     usbhid
     fatfs
     drivers
