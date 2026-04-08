@@ -11,6 +11,9 @@
 #ifndef PICO_ON_DEVICE
 #include <SDL_syswm.h>
 #endif
+#ifdef PICO_ON_DEVICE
+#include "hardware/watchdog.h"
+#endif
 
 
 /*
@@ -1428,7 +1431,15 @@ void Quit (const char *errorStr, ...)
     if (ret)
         Error (error);
 
+#ifdef PICO_ON_DEVICE
+    // On bare metal RP2350, exit() causes hardfault.
+    // Hardware reset via watchdog restarts cleanly.
+    printf("Restarting...\n");
+    watchdog_reboot(0, 0, 0);
+    while (1) tight_loop_contents();
+#else
     exit(ret);
+#endif
 }
 
 //===========================================================================

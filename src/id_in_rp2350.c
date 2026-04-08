@@ -51,6 +51,42 @@ static ScanCode hid_to_scancode(uint8_t hid_code) {
     return sc_None;
 }
 
+// Convert HID key code to ASCII character (unshifted / shifted)
+static char hid_to_ascii(uint8_t hid_code, bool shifted) {
+    // Letters: HID 0x04 ('a') through 0x1D ('z')
+    if (hid_code >= 0x04 && hid_code <= 0x1D) {
+        char c = 'a' + (hid_code - 0x04);
+        return shifted ? (c - 32) : c;
+    }
+    // Digits: HID 0x1E ('1') through 0x26 ('9'), 0x27 = '0'
+    if (hid_code >= 0x1E && hid_code <= 0x27) {
+        if (!shifted) {
+            if (hid_code == 0x27) return '0';
+            return '1' + (hid_code - 0x1E);
+        }
+        // Shifted digit row
+        static const char shifted_digits[] = "!@#$%^&*()";
+        return shifted_digits[hid_code - 0x1E];
+    }
+    // Space
+    if (hid_code == 0x2C) return ' ';
+    // Common punctuation (unshifted / shifted)
+    switch (hid_code) {
+        case 0x2D: return shifted ? '_' : '-';
+        case 0x2E: return shifted ? '+' : '=';
+        case 0x2F: return shifted ? '{' : '[';
+        case 0x30: return shifted ? '}' : ']';
+        case 0x31: return shifted ? '|' : '\\';
+        case 0x33: return shifted ? ':' : ';';
+        case 0x34: return shifted ? '"' : '\'';
+        case 0x35: return shifted ? '~' : '`';
+        case 0x36: return shifted ? '<' : ',';
+        case 0x37: return shifted ? '>' : '.';
+        case 0x38: return shifted ? '?' : '/';
+    }
+    return 0;
+}
+
 static ScanCode IN_MapKey(int key) {
     ScanCode scan = key;
 
@@ -97,6 +133,14 @@ void IN_ProcessEvents(void) {
             LastScan = sc;
             if (sc == sc_Pause)
                 Paused = true;
+
+            // Generate ASCII text input for save game names, menus, etc.
+            bool shifted = Keyboard[sc_LShift] || Keyboard[sc_RShift];
+            char ascii = hid_to_ascii(hid_code, shifted);
+            if (ascii) {
+                textinput[0] = ascii;
+                textinput[1] = '\0';
+            }
         } else {
             Keyboard[sc] = false;
         }

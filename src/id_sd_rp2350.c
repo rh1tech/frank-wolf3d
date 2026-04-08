@@ -718,6 +718,9 @@ void SD_Shutdown(void) {
     SD_MusicOff();
     SD_StopSound();
 
+    /* Stop I2S DMA before freeing any audio data */
+    i2s_set_fill_callback(NULL);
+
     /* Free pre-converted digitized sounds */
     for (int i = 0; i < STARTMUSIC - STARTDIGISOUNDS; i++) {
         if (SoundChunks[i].samples) {
