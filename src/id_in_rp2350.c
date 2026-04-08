@@ -6,6 +6,7 @@
 
 #include "wl_def.h"
 #include "ps2kbd_wrapper.h"
+#include "ps2.h"
 
 /*
 =============================================================================
@@ -102,6 +103,17 @@ static ScanCode IN_MapKey(int key) {
 
 /*
 =============================================================================
+                    Mouse State
+=============================================================================
+*/
+
+// Accumulated mouse deltas (read and reset by SDL_GetRelativeMouseState)
+static int16_t mouse_accum_dx = 0;
+static int16_t mouse_accum_dy = 0;
+static uint8_t mouse_buttons = 0;
+
+/*
+=============================================================================
                     INPUT PROCESSING
 =============================================================================
 */
@@ -139,9 +151,16 @@ void IN_ProcessEvents(void) {
         }
     }
 
-    // Event queue already handles press/release transitions.
-    // No additional sync needed - the key_states array in the PS/2 driver
-    // and the Keyboard[] array are kept in sync via events above.
+    // Poll PS/2 mouse - accumulate deltas for SDL_GetRelativeMouseState
+    if (ps2_mouse_is_initialized()) {
+        int16_t dx, dy;
+        int8_t wheel;
+        uint8_t buttons;
+        ps2_mouse_get_state(&dx, &dy, &wheel, &buttons);
+        mouse_accum_dx += dx;
+        mouse_accum_dy += dy;
+        mouse_buttons = buttons;
+    }
 }
 
 void IN_WaitEvent(void) {
@@ -164,19 +183,45 @@ void SDL_WaitEvent_compat(void *unused) {
     IN_WaitEvent();
 }
 
+static int INL_GetMouseButtons(void) {
+    // PS/2 buttons: bit 0=left, bit 1=right, bit 2=middle
+    // Wolf3D expects same layout (original code swaps SDL middle/right to match)
+    return mouse_buttons;
+}
+
 /*
 =============================================================================
-                    Mouse / Joystick stubs
+                    SDL Mouse Implementation
 =============================================================================
 */
 
-static int INL_GetMouseButtons(void) { return 0; }
+// Called by Wolf3D engine (wl_play.c PollControls, wl_menu.c)
+uint32_t SDL_GetRelativeMouseState(int *x, int *y) {
+    if (x) *x = mouse_accum_dx;
+    if (y) *y = -mouse_accum_dy;  // PS/2 Y is inverted vs screen coords
+    mouse_accum_dx = 0;
+    mouse_accum_dy = 0;
+
+    // Return SDL-style button mask
+    // PS/2: bit 0=left, bit 1=right, bit 2=middle
+    // SDL:  bit 0=left, bit 1=middle, bit 2=right
+    uint32_t sdl_buttons = (mouse_buttons & 1)             // left stays bit 0
+                         | ((mouse_buttons & 4) >> 1)      // middle bit 2 -> bit 1
+                         | ((mouse_buttons & 2) << 1);     // right bit 1 -> bit 2
+    return sdl_buttons;
+}
+
+/*
+=============================================================================
+                    Joystick stubs
+=============================================================================
+*/
 
 void IN_GetJoyDelta(int *dx, int *dy) { *dx = *dy = 0; }
 void IN_GetJoyFineDelta(int *dx, int *dy) { *dx = *dy = 0; }
 int IN_JoyButtons(void) { return 0; }
 boolean IN_JoyPresent(void) { return false; }
-void IN_CenterMouse(void) {}
+void IN_CenterMouse(void) { mouse_accum_dx = 0; mouse_accum_dy = 0; }
 
 void IN_SetWindowGrab(SDL_Window *win) { (void)win; }
 
@@ -190,7 +235,8 @@ void IN_Startup(void) {
     if (IN_Started) return;
 
     IN_ClearKeysDown();
-    MousePresent = false;
+    MousePresent = ps2_mouse_is_initialized();
+    GrabInput = true;  // Bare metal - always grab input
 
     IN_Started = true;
 }

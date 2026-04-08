@@ -17,6 +17,7 @@
 #include "psram_allocator.h"
 #include "ff.h"
 #include "ps2kbd_wrapper.h"
+#include "ps2.h"
 #include "audio.h"
 
 #include <stdio.h>
@@ -446,6 +447,18 @@ void wolf_rp2350_init(void) {
 
     printf("Initializing PS/2 keyboard...\n");
     ps2kbd_init();
+
+    printf("Initializing PS/2 mouse (pio1)...\n");
+    if (ps2_mouse_pio_init(pio1, PS2_MOUSE_CLK)) {
+        if (ps2_mouse_init_device()) {
+            printf("PS/2 mouse initialized%s\n",
+                   ps2_mouse_has_wheel() ? " (wheel)" : "");
+        } else {
+            printf("PS/2 mouse device init failed\n");
+        }
+    } else {
+        printf("PS/2 mouse PIO init failed\n");
+    }
 
     printf("Initializing I2S audio...\n");
     memset(&audio_config, 0, sizeof(audio_config));

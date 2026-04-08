@@ -331,11 +331,7 @@ static inline uint32_t SDL_GetMouseState(int *x, int *y) {
     return 0;
 }
 
-static inline uint32_t SDL_GetRelativeMouseState(int *x, int *y) {
-    if (x) *x = 0;
-    if (y) *y = 0;
-    return 0;
-}
+uint32_t SDL_GetRelativeMouseState(int *x, int *y);
 
 /*==========================================================================
  * SDL Event stubs

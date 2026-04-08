@@ -41,8 +41,8 @@ pico_sdk_init()
 add_subdirectory(src/fatfs)
 # Add drivers
 add_subdirectory(drivers/sdcard)
-add_subdirectory(drivers/ps2kbd)
-add_subdirectory(drivers/ps2mouse)
+add_subdirectory(drivers/ps2)
+add_subdirectory(src/ps2kbd)
 add_subdirectory(drivers/usbhid)
 
 # Create a library for other drivers
@@ -114,7 +114,7 @@ target_include_directories(frank-wolf PRIVATE
     src/fatfs
     drivers
     drivers/sdcard
-    drivers/ps2mouse
+    drivers/ps2
 )
 
 target_compile_options(frank-wolf PRIVATE -Ofast)
@@ -177,8 +177,8 @@ target_link_libraries(frank-wolf
     hardware_irq
     hardware_interp
     sdcard
+    ps2_driver
     ps2kbd
-    ps2mouse
     usbhid
     fatfs
     drivers

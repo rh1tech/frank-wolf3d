@@ -355,6 +355,8 @@ static const char *ScanNames[] =
 // Wolfenstein Control Panel!  Ta Da!
 //
 ////////////////////////////////////////////////////////////////////
+extern void WriteConfig(void);
+
 void
 US_ControlPanel (ScanCode scancode)
 {
@@ -408,6 +410,7 @@ US_ControlPanel (ScanCode scancode)
             goto finishup;
 
         finishup:
+            WriteConfig ();
             CleanupControlPanel ();
             return;
     }
@@ -502,8 +505,9 @@ US_ControlPanel (ScanCode scancode)
     while (!StartGame);
 
     //
-    // DEALLOCATE EVERYTHING
+    // SAVE SETTINGS AND DEALLOCATE
     //
+    WriteConfig ();
     CleanupControlPanel ();
 
     //
