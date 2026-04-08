@@ -48,7 +48,7 @@ int  YM3812Write(int which, int a, int v);
 unsigned char YM3812Read(int which, int a);
 void YM3812Mute(int which,int channel,BOOL mute);
 int  YM3812TimerOver(int which, int c);
-void YM3812UpdateOne(int which, INT16 *buffer, int length);
+void YM3812UpdateOne(int which, INT32 *buffer, int length);
 
 void YM3812SetTimerHandler(int which, OPL_TIMERHANDLER TimerHandler, int channelOffset);
 void YM3812SetIRQHandler(int which, OPL_IRQHANDLER IRQHandler, int param);

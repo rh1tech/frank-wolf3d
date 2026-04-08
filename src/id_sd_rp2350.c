@@ -1,16 +1,29 @@
 /*
  * ID_SD.C - Sound Manager for RP2350 (I2S + MAME OPL)
  *
- * Replaces SDL_mixer-based audio with I2S output and MAME OPL emulation.
- * Currently a stub implementation - audio will be added incrementally.
+ * Implements OPL music (IMF sequencer), AdLib sound effects, PC speaker
+ * square-wave synthesis, and digitized sound playback through I2S DMA
+ * with the MAME YM3812 OPL emulator.
+ *
+ * Architecture:
+ *   Game thread  -> SD_PlaySound / SD_StartMusic / SD_PlayDigitized
+ *   DMA IRQ      -> wolf_audio_fill -> OPL synthesis + PC speaker + digi mix
+ *   I2S hardware -> DMA ping-pong -> PIO -> I2S DAC
  */
 
 #include "wl_def.h"
 #include "mame/fmopl.h"
+#include "audio.h"
+#include "psram_allocator.h"
+
+#include <string.h>
 
 #define ORIGSAMPLERATE 7042
 
-// Global variables
+/*==========================================================================
+ * Globals (accessed by game code)
+ *==========================================================================*/
+
 boolean         AdLibPresent,
                 SoundBlasterPresent, SBProPresent,
                 SoundPositioned;
@@ -23,7 +36,10 @@ int             DigiChannel[STARTMUSIC - STARTDIGISOUNDS];
 
 globalsoundpos channelSoundPos[MIX_CHANNELS];
 
-// Internal variables
+/*==========================================================================
+ * Internal state
+ *==========================================================================*/
+
 static boolean  SD_Started;
 static boolean  nextsoundpos;
 static int      SoundNumber;
@@ -37,19 +53,19 @@ word            NumDigi;
 digiinfo       *DigiList;
 static boolean  DigiPlaying;
 
-// PC Sound variables
+/* PC Sound variables */
 static volatile byte    pcLastSample;
 static byte * volatile  pcSound;
 static longword         pcLengthLeft;
 
-// AdLib variables
+/* AdLib variables */
 static byte * volatile  alSound;
 static byte             alBlock;
 static longword         alLengthLeft;
 static longword         alTimeCount;
 static Instrument       alZeroInst;
 
-// Sequencer variables
+/* Sequencer variables */
 static volatile boolean sqActive;
 static word            *sqHack;
 static word            *sqHackPtr;
@@ -61,6 +77,68 @@ static const int oplChip = 0;
 
 int samplesPerMusicTick;
 
+/*==========================================================================
+ * IMF music player state (ported from SDL_IMFMusicPlayer)
+ *==========================================================================*/
+
+static int numreadysamples = 0;
+static byte *curAlSound = 0;
+static byte *curAlSoundPtr = 0;
+static longword curAlLengthLeft = 0;
+static int soundTimeCounter = 5;
+
+/*==========================================================================
+ * PC speaker synthesis state (ported from SDL_PCMixCallback)
+ *==========================================================================*/
+
+#define SQUARE_WAVE_AMP 0x2000
+
+static int pc_remaining = 0;
+static int pc_freq = 0;
+static int pc_phase = 0;
+
+/*==========================================================================
+ * Digitized sound system
+ *==========================================================================*/
+
+#define NUM_DIGI_CHANNELS 6
+
+typedef struct {
+    const int16_t *samples;
+    int      num_samples;
+    int      pos;
+    uint8_t  left_vol;
+    uint8_t  right_vol;
+    volatile boolean active;
+} digi_channel_t;
+
+static digi_channel_t digi_channels[NUM_DIGI_CHANNELS];
+
+/* Pre-converted digitized sounds (resampled from 7042 Hz to param_samplerate) */
+typedef struct {
+    int16_t *samples;
+    int      num_samples;
+} sound_chunk_t;
+
+static sound_chunk_t SoundChunks[STARTMUSIC - STARTDIGISOUNDS];
+
+/*==========================================================================
+ * OPL synthesis temp buffer (SRAM for ISR performance)
+ *==========================================================================*/
+
+#define OPL_TEMP_BUF_SIZE 1536
+static int32_t opl_temp_buf[OPL_TEMP_BUF_SIZE];
+
+/*==========================================================================
+ * Forward declarations
+ *==========================================================================*/
+
+static void wolf_audio_fill(int buf_index, uint32_t *buf, uint32_t frames);
+
+/*==========================================================================
+ * Utility
+ *==========================================================================*/
+
 void Delay(int32_t wolfticks) {
     if (wolfticks > 0)
         SDL_Delay((wolfticks * 100) / 7);
@@ -71,26 +149,75 @@ static void SDL_SoundFinished(void) {
     SoundPriority = 0;
 }
 
-//===========================================================================
-// Digitized sound stubs
-//===========================================================================
+/*==========================================================================
+ * Digitized sound support
+ *==========================================================================*/
 
 void SD_StopDigitized(void) {
     DigiPlaying = false;
     DigiNumber = 0;
     DigiPriority = 0;
     SoundPositioned = false;
+
     if ((DigiMode == sds_PC) && (SoundMode == sdm_PC))
         SDL_SoundFinished();
+
+    switch (DigiMode) {
+        case sds_PC:
+            pcSound = 0;
+            break;
+        case sds_SoundBlaster:
+            for (int i = 0; i < NUM_DIGI_CHANNELS; i++)
+                digi_channels[i].active = false;
+            break;
+        default:
+            break;
+    }
 }
 
 int SD_GetChannelForDigi(int which) {
-    (void)which;
-    return 0;
+    /* If this sound has a dedicated channel, use it */
+    if (DigiChannel[which] != -1) {
+        int ch = DigiChannel[which];
+        if (ch >= 0 && ch < NUM_DIGI_CHANNELS)
+            return ch;
+    }
+
+    /* Find a free channel (prefer 2+ to keep 0-1 for reserved sounds) */
+    for (int i = 2; i < NUM_DIGI_CHANNELS; i++) {
+        if (!digi_channels[i].active)
+            return i;
+    }
+    /* Check reserved channels too */
+    for (int i = 0; i < 2; i++) {
+        if (!digi_channels[i].active)
+            return i;
+    }
+
+    /* All busy — steal the channel closest to finishing */
+    int best = 2;
+    int best_progress = 0;
+    for (int i = 2; i < NUM_DIGI_CHANNELS; i++) {
+        int progress = digi_channels[i].num_samples > 0
+            ? (digi_channels[i].pos * 100) / digi_channels[i].num_samples
+            : 100;
+        if (progress > best_progress) {
+            best_progress = progress;
+            best = i;
+        }
+    }
+    return best;
 }
 
 void SD_SetPosition(int channel, int leftpos, int rightpos) {
-    (void)channel; (void)leftpos; (void)rightpos;
+    if ((leftpos < 0) || (leftpos > 15) || (rightpos < 0) || (rightpos > 15)
+            || ((leftpos == 15) && (rightpos == 15)))
+        Quit("SD_SetPosition: Illegal position");
+
+    if (channel >= 0 && channel < NUM_DIGI_CHANNELS) {
+        digi_channels[channel].left_vol  = (uint8_t)(255 - leftpos * 17);
+        digi_channels[channel].right_vol = (uint8_t)(255 - rightpos * 17);
+    }
 }
 
 Sint16 GetSample(float csample, byte *samples, int size) {
@@ -110,14 +237,67 @@ Sint16 GetSample(float csample, byte *samples, int size) {
 }
 
 void SD_PrepareSound(int which) {
-    // Stub - no SDL_mixer on RP2350
-    (void)which;
+    if (DigiList == NULL)
+        Quit("SD_PrepareSound(%i): DigiList not initialized!\n", which);
+
+    /* Free any previous conversion */
+    if (SoundChunks[which].samples) {
+        psram_free(SoundChunks[which].samples);
+        SoundChunks[which].samples = NULL;
+        SoundChunks[which].num_samples = 0;
+    }
+
+    int page = DigiList[which].startpage;
+    int size = DigiList[which].length;
+
+    byte *origsamples = PM_GetSoundPage(page);
+    if (origsamples + size >= PM_GetPageEnd())
+        Quit("SD_PrepareSound(%i): Sound reaches out of page file!\n", which);
+
+    int destsamples = (int)((float)size * (float)param_samplerate
+        / (float)ORIGSAMPLERATE);
+
+    int16_t *newsamples = (int16_t *)psram_malloc(destsamples * sizeof(int16_t));
+    if (!newsamples) {
+        printf("SD_PrepareSound(%i): Out of PSRAM (%d samples)!\n",
+               which, destsamples);
+        return;
+    }
+
+    /* Resample with cubic interpolation (same algorithm as SDL version) */
+    for (int i = 0; i < destsamples; i++) {
+        newsamples[i] = GetSample((float)size * (float)i / (float)destsamples,
+            origsamples, size);
+    }
+
+    SoundChunks[which].samples = newsamples;
+    SoundChunks[which].num_samples = destsamples;
 }
 
 int SD_PlayDigitized(word which, int leftpos, int rightpos) {
-    (void)which; (void)leftpos; (void)rightpos;
-    // Stub - no digitized sound playback yet
-    return 0;
+    if (!DigiMode)
+        return 0;
+
+    if (which >= NumDigi)
+        Quit("SD_PlayDigitized: bad sound number %i", which);
+
+    int channel = SD_GetChannelForDigi(which);
+    SD_SetPosition(channel, leftpos, rightpos);
+
+    DigiPlaying = true;
+
+    sound_chunk_t *chunk = &SoundChunks[which];
+    if (!chunk->samples || !chunk->num_samples) {
+        printf("SoundChunks[%i] is NULL!\n", which);
+        return 0;
+    }
+
+    digi_channels[channel].samples     = chunk->samples;
+    digi_channels[channel].num_samples = chunk->num_samples;
+    digi_channels[channel].pos         = 0;
+    digi_channels[channel].active      = true;
+
+    return channel;
 }
 
 void SD_ChannelFinished(int channel) {
@@ -125,9 +305,24 @@ void SD_ChannelFinished(int channel) {
 }
 
 void SD_SetDigiDevice(byte mode) {
-    if (mode == DigiMode) return;
+    boolean devicenotpresent = false;
+
+    if (mode == DigiMode)
+        return;
+
     SD_StopDigitized();
-    DigiMode = mode;
+
+    switch (mode) {
+        case sds_SoundBlaster:
+            if (!SoundBlasterPresent)
+                devicenotpresent = true;
+            break;
+        default:
+            break;
+    }
+
+    if (!devicenotpresent)
+        DigiMode = mode;
 }
 
 void SDL_SetupDigi(void) {
@@ -174,9 +369,9 @@ void SDL_SetupDigi(void) {
     }
 }
 
-//===========================================================================
-// AdLib / OPL stubs
-//===========================================================================
+/*==========================================================================
+ * AdLib / OPL
+ *==========================================================================*/
 
 static void SDL_ALStopSound(void) {
     alSound = 0;
@@ -262,9 +457,165 @@ static void SDL_StartDevice(void) {
     SoundPriority = 0;
 }
 
-//===========================================================================
-// Public routines
-//===========================================================================
+/*==========================================================================
+ * Audio fill callback — called from DMA IRQ to generate stereo audio.
+ *
+ * This is the heart of the audio system, replacing SDL_IMFMusicPlayer
+ * and SDL_PCMixCallback.  It runs at DMA completion rate (~23 ms for
+ * 1024 frames at 44100 Hz).
+ *
+ * Flow per buffer:
+ *   1. Generate mono OPL samples (music + AdLib SFX via YM3812)
+ *   2. Convert to stereo, mixing in PC speaker square wave
+ *   3. Mix in active digitized sound channels with L/R panning
+ *   4. Advance the IMF sequencer and AdLib SFX state each tick
+ *==========================================================================*/
+
+static void wolf_audio_fill(int buf_index, uint32_t *buf, uint32_t frames) {
+    (void)buf_index;
+    int16_t *out = (int16_t *)buf;
+    uint32_t remaining = frames;
+
+    while (remaining > 0) {
+        if (numreadysamples > 0) {
+            /* Generate a chunk of OPL + mix everything */
+            uint32_t n = (uint32_t)numreadysamples;
+            if (n > remaining) n = remaining;
+            if (n > OPL_TEMP_BUF_SIZE) n = OPL_TEMP_BUF_SIZE;
+
+            /* OPL synthesis (mono) */
+            YM3812UpdateOne(oplChip, (INT32 *)opl_temp_buf, (int)n);
+
+            /* Per-sample: convert 32-bit mono OPL to stereo, mix sources.
+             * OPL raw accumulator peaks at ~74K for 9 FM channels.
+             * >>1 gives good volume; brief peaks may clip at output
+             * but this is inaudible vs the old internal hard-clipping. */
+            for (uint32_t i = 0; i < n; i++) {
+                int32_t opl = opl_temp_buf[i];
+                int32_t left  = opl;
+                int32_t right = opl;
+
+                /* ---- PC speaker square wave synthesis ---- */
+                while (pc_remaining == 0) {
+                    pc_phase = 0;
+                    if (pcSound) {
+                        /* PC speaker sample rate is 140 Hz */
+                        pc_remaining = param_samplerate / 140;
+                        if (*pcSound != pcLastSample) {
+                            pcLastSample = *pcSound;
+                            if (pcLastSample)
+                                /* PIC counts at 1.193180 MHz, reload = sample*60 */
+                                pc_freq = 1193180 / (pcLastSample * 60);
+                            else
+                                pc_freq = 0;
+                        }
+                        pcSound++;
+                        pcLengthLeft--;
+                        if (!pcLengthLeft) {
+                            pcSound = 0;
+                            SoundNumber = 0;
+                            SoundPriority = 0;
+                        }
+                    } else {
+                        pc_freq = 0;
+                        pc_remaining = 1;
+                    }
+                }
+
+                if (pc_freq != 0) {
+                    int frac = (pc_phase * pc_freq * 2) / param_samplerate;
+                    int16_t pc_val = (frac % 2 == 0)
+                        ? SQUARE_WAVE_AMP : (int16_t)-SQUARE_WAVE_AMP;
+                    left  += pc_val >> 1;
+                    right += pc_val >> 1;
+                    pc_phase++;
+                }
+                pc_remaining--;
+
+                /* ---- Digitized sound mixing ---- */
+                for (int ch = 0; ch < NUM_DIGI_CHANNELS; ch++) {
+                    if (digi_channels[ch].active) {
+                        int pos = digi_channels[ch].pos;
+                        if (pos < digi_channels[ch].num_samples) {
+                            int16_t s = digi_channels[ch].samples[pos];
+                            left  += (s * digi_channels[ch].left_vol) >> 10;
+                            right += (s * digi_channels[ch].right_vol) >> 10;
+                            digi_channels[ch].pos = pos + 1;
+                        } else {
+                            digi_channels[ch].active = false;
+                        }
+                    }
+                }
+
+                /* Clamp to int16 range */
+                if (left > 32767) left = 32767;
+                else if (left < -32768) left = -32768;
+                if (right > 32767) right = 32767;
+                else if (right < -32768) right = -32768;
+
+                out[i * 2]     = (int16_t)left;
+                out[i * 2 + 1] = (int16_t)right;
+            }
+
+            out += n * 2;
+            remaining -= n;
+            numreadysamples -= (int)n;
+
+        } else {
+            /* ---- Advance sound/music state (one tick at 700 Hz) ---- */
+
+            /* AdLib SFX advance every 5 ticks (= 140 Hz) */
+            soundTimeCounter--;
+            if (!soundTimeCounter) {
+                soundTimeCounter = 5;
+                if (curAlSound != alSound) {
+                    curAlSound = curAlSoundPtr = alSound;
+                    curAlLengthLeft = alLengthLeft;
+                }
+                if (curAlSound) {
+                    if (*curAlSoundPtr) {
+                        alOut(alFreqL, *curAlSoundPtr);
+                        alOut(alFreqH, alBlock);
+                    } else {
+                        alOut(alFreqH, 0);
+                    }
+                    curAlSoundPtr++;
+                    curAlLengthLeft--;
+                    if (!curAlLengthLeft) {
+                        curAlSound = alSound = 0;
+                        SoundNumber = 0;
+                        SoundPriority = 0;
+                        alOut(alFreqH, 0);
+                    }
+                }
+            }
+
+            /* IMF music sequencer */
+            if (sqActive) {
+                do {
+                    if (sqHackTime > alTimeCount) break;
+                    sqHackTime = alTimeCount + *(sqHackPtr + 1);
+                    alOut(*(byte *)sqHackPtr, *(((byte *)sqHackPtr) + 1));
+                    sqHackPtr += 2;
+                    sqHackLen -= 4;
+                } while (sqHackLen > 0);
+                alTimeCount++;
+                if (!sqHackLen) {
+                    sqHackPtr = sqHack;
+                    sqHackLen = sqHackSeqLen;
+                    sqHackTime = 0;
+                    alTimeCount = 0;
+                }
+            }
+
+            numreadysamples = samplesPerMusicTick;
+        }
+    }
+}
+
+/*==========================================================================
+ * Public routines
+ *==========================================================================*/
 
 boolean SD_SetSoundMode(byte mode) {
     boolean result = false;
@@ -306,6 +657,8 @@ boolean SD_SetMusicMode(byte mode) {
     boolean result = false;
 
     SD_FadeOutMusic();
+    while (SD_MusicPlaying())
+        SDL_Delay(5);
 
     switch (mode) {
         case smm_Off: result = true; break;
@@ -325,7 +678,7 @@ void SD_Startup(void) {
 
     samplesPerMusicTick = param_samplerate / 700;
 
-    // Initialize OPL emulator
+    /* Initialize OPL emulator */
     if (YM3812Init(1, 3579545, param_samplerate)) {
         printf("Unable to create virtual OPL!!\n");
     }
@@ -333,19 +686,30 @@ void SD_Startup(void) {
     for (i = 1; i < 0xf6; i++)
         YM3812Write(oplChip, i, 0);
 
-    YM3812Write(oplChip, 1, 0x20);
+    YM3812Write(oplChip, 1, 0x20);  /* Set WSE=1 */
 
     AdLibPresent = true;
     SoundBlasterPresent = true;
 
     alTimeCount = 0;
 
+    /* Clear audio state */
+    memset(digi_channels, 0, sizeof(digi_channels));
+    memset(SoundChunks, 0, sizeof(SoundChunks));
+
     SD_SetSoundMode(sdm_Off);
     SD_SetMusicMode(smm_Off);
 
     SDL_SetupDigi();
 
+    /* Register audio callback and start I2S playback */
+    i2s_set_fill_callback(wolf_audio_fill);
+    i2s_start();
+
     SD_Started = true;
+
+    printf("Sound system started (OPL + I2S @ %d Hz, %d samples/tick)\n",
+           param_samplerate, samplesPerMusicTick);
 }
 
 void SD_Shutdown(void) {
@@ -353,6 +717,14 @@ void SD_Shutdown(void) {
 
     SD_MusicOff();
     SD_StopSound();
+
+    /* Free pre-converted digitized sounds */
+    for (int i = 0; i < STARTMUSIC - STARTDIGISOUNDS; i++) {
+        if (SoundChunks[i].samples) {
+            psram_free(SoundChunks[i].samples);
+            SoundChunks[i].samples = NULL;
+        }
+    }
 
     free(DigiList);
     DigiList = NULL;
@@ -416,7 +788,7 @@ boolean SD_PlaySound(int sound) {
             SDL_PCPlaySound((PCSound *)s);
             break;
         case sdm_AdLib:
-            alSound = 0;
+            curAlSound = alSound = 0;
             alOut(alFreqH, 0);
             SDL_ALPlaySound((AdLibSound *)s);
             break;
@@ -429,24 +801,47 @@ boolean SD_PlaySound(int sound) {
 }
 
 word SD_SoundPlaying(void) {
-    // No audio callback running on RP2350 yet, so sounds never
-    // finish on their own.  Report nothing playing to avoid hangs.
-    return 0;
+    boolean result = false;
+
+    switch (SoundMode) {
+        case sdm_PC:
+            result = pcSound ? true : false;
+            break;
+        case sdm_AdLib:
+            result = alSound ? true : false;
+            break;
+        default:
+            break;
+    }
+
+    if (result)
+        return SoundNumber;
+    else
+        return false;
 }
 
 void SD_StopSound(void) {
-    if (DigiPlaying) SD_StopDigitized();
+    if (DigiPlaying)
+        SD_StopDigitized();
 
-    // Force-clear both channels since we have no playback callback
-    pcSound = 0;
-    alSound = 0;
+    switch (SoundMode) {
+        case sdm_PC:
+            SDL_PCStopSound();
+            break;
+        case sdm_AdLib:
+            SDL_ALStopSound();
+            break;
+        default:
+            break;
+    }
 
     SoundPositioned = false;
     SDL_SoundFinished();
 }
 
 void SD_WaitSoundDone(void) {
-    // No-op: no audio playback callback, nothing to wait for
+    while (SD_SoundPlaying())
+        SDL_Delay(5);
 }
 
 void SD_MusicOn(void) {

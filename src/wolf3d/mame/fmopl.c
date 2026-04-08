@@ -2179,11 +2179,11 @@ void YM3812SetUpdateHandler(int which,OPL_UPDATEHANDLER UpdateHandler,int param)
 ** '*buffer' is the output buffer pointer
 ** 'length' is the number of samples that should be generated
 */
-void YM3812UpdateOne(int which, INT16 *buffer, int length)
+void YM3812UpdateOne(int which, INT32 *buffer, int length)
 {
 	FM_OPL		*OPL = OPL_YM3812[which];
 	UINT8		rhythm = OPL->rhythm&0x20;
-	OPLSAMPLE	*buf = buffer;
+	INT32		*buf = buffer;
 	int i;
 
 	if( (void *)OPL != cur_chip ){
@@ -2223,30 +2223,9 @@ void YM3812UpdateOne(int which, INT16 *buffer, int length)
 
 		lt = output[0];
 
-//		lt >>= FINAL_SH;
-		lt<<=2;
-
-		/* limit check */
-		lt = limit( lt , MAXOUT, MINOUT );
-
-		#ifdef SAVE_SAMPLE
-		if (which==0)
-		{
-			SAVE_ALL_CHANNELS
-		}
-		#endif
-
-		/* store to sound buffer */
-/*		#if (OPL_SAMPLE_BITS == 16)
-            lt += 32768;
-        #else
-            lt += 128;
-        #endif*/
-
-//		buf[i] = lt;
-
-		buf[i*2] = lt;          // stereo version
-		buf[i*2+1] = lt;
+		/* Raw 32-bit mono output — no shift, no clamp.
+		 * Scaling and stereo conversion handled by the mixer. */
+		buf[i] = lt;
 
 		advance(OPL);
 	}
