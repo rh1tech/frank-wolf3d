@@ -53,6 +53,7 @@ enum graphics_mode_t {
 
 void graphics_init(g_out g_out);
 void graphics_set_buffer(uint8_t *buffer);
+void hdmi_submit_frame(uint8_t *buf);
 uint8_t* graphics_get_buffer(void);
 uint32_t graphics_get_width(void);
 uint32_t graphics_get_height(void);

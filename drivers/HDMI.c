@@ -69,8 +69,19 @@ int get_video_mode() {
     return 0;
 }
 
+// Triple-buffer vsync: game submits a ready frame pointer, swap at vblank
+static volatile uint8_t *hdmi_ready_ptr = NULL;
+
+void hdmi_submit_frame(uint8_t *buf) {
+    hdmi_ready_ptr = buf;
+}
+
 void vsync_handler() {
-    // Optional: Add vsync callback if needed
+    uint8_t *ready = (uint8_t *)hdmi_ready_ptr;
+    if (ready) {
+        graphics_buffer = ready;
+        hdmi_ready_ptr = NULL;
+    }
 }
 
 // --- New HDMI Driver Code ---

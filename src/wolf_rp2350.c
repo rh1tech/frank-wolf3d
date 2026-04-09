@@ -41,8 +41,10 @@
 // The screenBuffer (8-bit indexed) that Wolf3D draws into
 static uint8_t *wolf_screenbuffer = NULL;
 
-// HDMI display buffer (320x240, with black bars for 320x200 content)
-static uint8_t *hdmi_framebuffer = NULL;
+// HDMI triple-buffered display (320x240, with black bars for 320x200 content)
+static uint8_t *hdmi_bufs[3] = {NULL, NULL, NULL};
+static int hdmi_back = 1;                 // game writes to this (game thread only)
+static uint8_t *hdmi_framebuffer = NULL;  // alias for [0], used by boot screens
 
 // Current palette (RGB888 for HDMI conversion)
 static SDL_Color current_palette[256];
@@ -115,20 +117,34 @@ SDL_Color *wolf_get_palette(void) {
     return current_palette;
 }
 
-// Push a framebuffer to HDMI (NULL = use default wolf_screenbuffer)
+// Push a framebuffer to HDMI (triple-buffered, lock-free, never blocks)
 void wolf_update_screen_from(uint8_t *buf) {
     if (!buf) buf = wolf_screenbuffer;
     if (!buf) return;
 
-    uint8_t *hdmi_buf = graphics_get_buffer();
-    if (!hdmi_buf) return;
+    // Write to the back buffer (DMA never reads from it)
+    uint8_t *back_buf = hdmi_bufs[hdmi_back];
+    if (!back_buf) return;
 
     int y_offset = 20;
 
-    memset(hdmi_buf, 0, WOLF_RESX * y_offset);
-    memcpy(hdmi_buf + WOLF_RESX * y_offset, buf, WOLF_RESX * WOLF_RESY);
-    memset(hdmi_buf + WOLF_RESX * (y_offset + WOLF_RESY), 0,
+    memset(back_buf, 0, WOLF_RESX * y_offset);
+    memcpy(back_buf + WOLF_RESX * y_offset, buf, WOLF_RESX * WOLF_RESY);
+    memset(back_buf + WOLF_RESX * (y_offset + WOLF_RESY), 0,
            WOLF_RESX * y_offset);
+
+    // Submit this frame for display at next vsync (single atomic pointer write)
+    hdmi_submit_frame(back_buf);
+
+    // Reclaim: pick a free buffer for next frame
+    // Avoid the buffer being displayed and the one we just submitted
+    uint8_t *displayed = graphics_get_buffer();
+    for (int i = 0; i < 3; i++) {
+        if (hdmi_bufs[i] != displayed && hdmi_bufs[i] != back_buf) {
+            hdmi_back = i;
+            break;
+        }
+    }
 }
 
 void wolf_update_screen(void) {
@@ -429,13 +445,16 @@ void wolf_rp2350_init(void) {
 
     printf("Initializing HDMI (320x240)...\n");
 
-    // Allocate HDMI display buffer (320x240) in PSRAM
-    hdmi_framebuffer = (uint8_t *)psram_malloc(WOLF_RESX * HDMI_RESY);
-    if (!hdmi_framebuffer) {
-        printf("ERROR: Failed to allocate HDMI framebuffer\n");
-        while (1) tight_loop_contents();
+    // Allocate three HDMI display buffers for triple buffering (vsync)
+    for (int i = 0; i < 3; i++) {
+        hdmi_bufs[i] = (uint8_t *)psram_malloc(WOLF_RESX * HDMI_RESY);
+        if (!hdmi_bufs[i]) {
+            printf("ERROR: Failed to allocate HDMI framebuffer %d\n", i);
+            while (1) tight_loop_contents();
+        }
+        memset(hdmi_bufs[i], 0, WOLF_RESX * HDMI_RESY);
     }
-    memset(hdmi_framebuffer, 0, WOLF_RESX * HDMI_RESY);
+    hdmi_framebuffer = hdmi_bufs[0];
 
     // Allocate Wolf3D game framebuffer (320x200) in PSRAM
     wolf_screenbuffer = (uint8_t *)psram_malloc(WOLF_RESX * WOLF_RESY);
