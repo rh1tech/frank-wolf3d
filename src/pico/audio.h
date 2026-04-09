@@ -2,7 +2,7 @@
  * I2S Audio Driver (PIO1 + DMA ping-pong)
  * Based on FRANK OS audio driver by Mikhail Matveev
  *
- * SPDX-License-Identifier: GPL-3.0-or-later
+ * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
 #pragma once

@@ -10,7 +10,7 @@
  * completed channel (reset read addr + transfer count) and marks its buffer
  * free for the CPU to refill.
  *
- * SPDX-License-Identifier: GPL-3.0-or-later
+ * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
 #include "audio.h"
