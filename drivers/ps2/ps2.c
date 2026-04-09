@@ -73,6 +73,9 @@ static uint32_t mouse_frame_errors = 0;
 static uint32_t mouse_parity_errors = 0;
 static uint32_t mouse_sync_errors = 0;
 
+// Set by ISR when a frame/parity error drops a byte, forcing packet resync
+static volatile bool mouse_rx_error = false;
+
 //=============================================================================
 // PIO Helpers
 //=============================================================================
@@ -113,7 +116,9 @@ static void mouse_pio_irq_handler(void) {
             }
             // If buffer full, drop the byte (better than blocking ISR)
         } else {
-            // Track errors but don't block
+            // A dropped byte shifts the 3-byte packet alignment.
+            // Signal the main loop to resync on the next status byte.
+            mouse_rx_error = true;
             if (result == -1) mouse_frame_errors++;
             else mouse_parity_errors++;
         }
@@ -127,8 +132,9 @@ static void mouse_enable_irq(void) {
     // Enable RXNEMPTY interrupt for mouse state machine on IRQ index 1
     pio_set_irqn_source_enabled(ps2_pio, 1, pis_sm0_rx_fifo_not_empty + mouse_sm, true);
 
-    // Set up interrupt handler
+    // Set up interrupt handler (high priority - ISR is sub-microsecond)
     irq_set_exclusive_handler(irq_num, mouse_pio_irq_handler);
+    irq_set_priority(irq_num, 0x40);
     irq_set_enabled(irq_num, true);
 }
 
@@ -409,10 +415,11 @@ static void mouse_process_packet(void) {
     int16_t dx = x_neg ? ((int16_t)x_raw - 256) : (int16_t)x_raw;
     int16_t dy = y_neg ? ((int16_t)y_raw - 256) : (int16_t)y_raw;
 
-    // Clamp corrupt pattern: sign bit set but raw byte is tiny
-    // This gives dx like -256, -255 etc. Clamp to reasonable max
-    if (x_neg && x_raw < 32) dx = -16;
-    if (y_neg && y_raw < 32) dy = -16;
+    // Discard if movement is impossibly large (likely from misaligned packet).
+    // Sign set + raw < 32 gives -256..-225 counts per 5ms sample — impossible.
+    if ((x_neg && x_raw < 32) || (y_neg && y_raw < 32)) {
+        return;
+    }
 
     // Track valid packets for debugging
     mouse_valid_packet_count++;
@@ -420,13 +427,8 @@ static void mouse_process_packet(void) {
     // Extract button state from packet
     uint8_t new_buttons = status & 0x07;
 
-    // Debug: Log button state changes
     if (new_buttons != mouse_last_buttons) {
-        printf("PS2: Button state changed: 0x%02X -> 0x%02X (packet #%lu, status=0x%02X)\n",
-               mouse_last_buttons, new_buttons, mouse_valid_packet_count, status);
         mouse_last_buttons = new_buttons;
-
-        // Track when buttons are pressed for timeout detection
         if (new_buttons != 0) {
             mouse_button_press_time = time_us_32();
         }
@@ -636,6 +638,7 @@ bool ps2_mouse_init_device(void) {
     mouse_frame_errors = 0;
     mouse_parity_errors = 0;
     mouse_sync_errors = 0;
+    mouse_rx_error = false;
 
     sleep_ms(100);
 
@@ -664,6 +667,13 @@ bool ps2_mouse_init_device(void) {
 }
 
 void ps2_mouse_poll(void) {
+    // If ISR dropped a byte (frame/parity error), reset packet assembly
+    // so the sync bit check re-aligns to a valid packet boundary
+    if (mouse_rx_error) {
+        mouse_rx_error = false;
+        mouse_packet_idx = 0;
+    }
+
     // Process bytes from the interrupt-filled ring buffer
     // Limit processing to prevent runaway loops
     int bytes_processed = 0;

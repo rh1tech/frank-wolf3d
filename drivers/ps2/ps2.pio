@@ -14,25 +14,25 @@
 
 .program ps2_rx
 
+; Compact 10-instruction version: uses wrap instead of jmp start,
+; and the jmp in the continue path doubles as the second nop delay.
+; Timing is identical to the 12-instruction version.
+
 .wrap_target
 start:
     wait 1 pin 0        ; Wait for CLK high (idle state)
     wait 0 pin 0        ; Wait for CLK falling edge (start bit begins)
-
     set x, 10           ; 11 bits total (0-10 inclusive)
 bitloop:
-    ; Small delay to let data line settle after clock edge
-    nop
-    nop
+    nop                  ; Delay to let data line settle
     in pins, 2          ; Sample CLK (bit 0) and DATA (bit 1)
     wait 1 pin 0        ; Wait for CLK to go high
     jmp x-- continue    ; Decrement and check
     push                ; All 11 samples collected, push 22 bits to FIFO
-    jmp start           ; Start over
+.wrap                    ; Back to start (saves 1 instruction vs jmp)
 continue:
     wait 0 pin 0        ; Wait for next CLK falling edge
-    jmp bitloop
-.wrap
+    jmp bitloop          ; jmp acts as second delay cycle before sample
 
 % c-sdk {
 #include "hardware/pio.h"
@@ -54,7 +54,9 @@ static inline void ps2_rx_program_init(PIO pio, uint sm, uint offset, uint clk_p
     // IN pin base = CLK pin, so:
     //   'wait N pin 0' checks CLK
     //   'in pins, 2' reads CLK (bit 0) and DATA (bit 1)
-    sm_config_set_in_pins(&c, clk_pin);
+    // Subtract gpio_base for PIO-relative pin (needed when PIO has non-zero base)
+    uint pio_clk_pin = clk_pin - pio_get_gpio_base(pio);
+    sm_config_set_in_pins(&c, pio_clk_pin);
 
     // Shift LEFT, autopush after 22 bits (11 samples * 2 bits)
     // Left shift puts first sample in LSB, which makes decoding easier

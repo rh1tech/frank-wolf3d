@@ -157,8 +157,33 @@ void IN_ProcessEvents(void) {
         }
     }
 
-    // Poll NES gamepad
+    // Poll NES gamepad and inject as keyboard scancodes for menu navigation
     nespad_read();
+    {
+        static uint32_t prev_nespad = 0;
+        uint32_t cur = nespad_state;
+        struct { uint32_t mask; ScanCode sc; } nesmap[] = {
+            { DPAD_UP,     sc_UpArrow },
+            { DPAD_DOWN,   sc_DownArrow },
+            { DPAD_LEFT,   sc_LeftArrow },
+            { DPAD_RIGHT,  sc_RightArrow },
+            { DPAD_A,      sc_LControl },
+            { DPAD_B,      sc_LAlt },
+            { DPAD_START,  sc_Escape },
+            { DPAD_SELECT, sc_Enter },
+        };
+        for (int i = 0; i < 8; i++) {
+            bool now = (cur & nesmap[i].mask) != 0;
+            bool was = (prev_nespad & nesmap[i].mask) != 0;
+            if (now && !was) {
+                Keyboard[nesmap[i].sc] = true;
+                LastScan = nesmap[i].sc;
+            } else if (!now && was) {
+                Keyboard[nesmap[i].sc] = false;
+            }
+        }
+        prev_nespad = cur;
+    }
 
 #ifdef USB_HID_ENABLED
     // Poll USB HID devices
