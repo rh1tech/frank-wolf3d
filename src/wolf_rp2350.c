@@ -19,6 +19,9 @@
 #include "ps2kbd_wrapper.h"
 #include "ps2.h"
 #include "nespad.h"
+#ifdef USB_HID_ENABLED
+#include "usbhid.h"
+#endif
 #include "audio.h"
 
 #include <stdio.h>
@@ -387,7 +390,11 @@ static void wolf_draw_welcome_panel(uint8_t *fb) {
              board, CPU_CLOCK_MHZ, PSRAM_MAX_FREQ_MHZ);
     boot_draw_text(fb, lx, ty + 46, buf, 1);
     boot_draw_text(fb, lx, ty + 56, "github.com/rh1tech/frank-wolf3d", 1);
+#ifdef USB_HID_ENABLED
+    boot_draw_text(fb, lx, ty + 66, "Gamepad: NES, USB HID", 1);
+#else
     boot_draw_text(fb, lx, ty + 66, "Gamepad: NES", 1);
+#endif
     boot_draw_text(fb, lx, ty + 78, "Press any key or button...", 1);
 }
 
@@ -470,6 +477,11 @@ void wolf_rp2350_init(void) {
         printf("NES gamepad init failed\n");
     }
 
+#ifdef USB_HID_ENABLED
+    printf("Initializing USB HID Host...\n");
+    usbhid_init();
+#endif
+
     printf("Initializing I2S audio...\n");
     memset(&audio_config, 0, sizeof(audio_config));
     audio_config.sample_freq = 44100;
@@ -534,6 +546,14 @@ void wolf_rp2350_init(void) {
         nespad_read();
         if (nespad_state)
             break;
+#ifdef USB_HID_ENABLED
+        usbhid_task();
+        {
+            uint8_t kc; int down;
+            if (usbhid_get_key_action(&kc, &down) && down)
+                break;
+        }
+#endif
         sleep_ms(33);
     }
 

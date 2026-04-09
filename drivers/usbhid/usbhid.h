@@ -1,8 +1,10 @@
 /*
- * USB HID Host Driver Header
- * Provides keyboard and mouse input via USB Host
- * 
+ * USB HID host driver
+ * Based on TinyUSB HID host example
  * SPDX-License-Identifier: MIT
+ *
+ * Fork maintained as part of FRANK NES by Mikhail Matveev.
+ * https://rh1.tech | https://github.com/rh1tech/frank-nes
  */
 
 #ifndef USBHID_H
@@ -33,6 +35,15 @@ typedef struct {
     uint8_t buttons;        // Button state (bit 0=left, 1=right, 2=middle)
     int has_motion;         // Non-zero if motion/button change occurred
 } usbhid_mouse_state_t;
+
+// USB gamepad state (normalized to Genesis-style mapping)
+typedef struct {
+    int8_t axis_x;          // Left stick X: -127 to 127
+    int8_t axis_y;          // Left stick Y: -127 to 127
+    uint8_t dpad;           // D-pad: bit 0=up, 1=down, 2=left, 3=right
+    uint16_t buttons;       // Buttons: bit 0=A, 1=B, 2=C, 3=X, 4=Y, 5=Z, 6=Start, 7=Select/Mode
+    int connected;          // Non-zero if gamepad is connected
+} usbhid_gamepad_state_t;
 
 //--------------------------------------------------------------------
 // API Functions
@@ -81,6 +92,43 @@ void usbhid_get_mouse_state(usbhid_mouse_state_t *state);
  * @return Non-zero if action available
  */
 int usbhid_get_key_action(uint8_t *keycode, int *down);
+
+/**
+ * Get keyboard state as bitmask (same format as PS/2 keyboard)
+ * Uses same KBD_STATE_* constants from ps2kbd_wrapper.h
+ * @return Bitmask of currently pressed keys
+ */
+uint16_t usbhid_get_kbd_state(void);
+
+/**
+ * Check if a USB gamepad is connected (any slot)
+ * @return Non-zero if at least one gamepad connected
+ */
+int usbhid_gamepad_connected(void);
+
+/**
+ * Get combined gamepad state (all connected gamepads merged)
+ * @param state Pointer to state structure to fill
+ */
+void usbhid_get_gamepad_state(usbhid_gamepad_state_t *state);
+
+/**
+ * Check if USB gamepad at specific slot (0 or 1) is connected
+ * @param idx Gamepad slot index (0 or 1)
+ * @return Non-zero if gamepad connected at this slot
+ */
+int usbhid_gamepad_connected_idx(int idx);
+
+/**
+ * Get gamepad state for specific slot (0 or 1)
+ * @param idx Gamepad slot index (0 or 1)
+ * @param state Pointer to state structure to fill
+ */
+void usbhid_get_gamepad_state_idx(int idx, usbhid_gamepad_state_t *state);
+
+// Debug: last raw HID report from generic device
+extern uint8_t usbhid_debug_last_report[16];
+extern uint8_t usbhid_debug_last_report_len;
 
 #ifdef __cplusplus
 }

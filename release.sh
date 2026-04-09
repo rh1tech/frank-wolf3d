@@ -92,7 +92,7 @@ for config in "${CONFIGS[@]}"; do
     echo -e "${CYAN}[$BUILD_COUNT/$TOTAL_BUILDS] Building: $OUTPUT_NAME${NC}"
 
     rm -rf build && mkdir build && cd build
-    cmake .. -DBOARD_VARIANT="$BOARD" -DCPU_SPEED="$CPU" -DPSRAM_SPEED="$PSRAM" > /dev/null 2>&1
+    cmake .. -DBOARD_VARIANT="$BOARD" -DCPU_SPEED="$CPU" -DPSRAM_SPEED="$PSRAM" -DUSB_HID_ENABLED=1 > /dev/null 2>&1
 
     if make -j8 > /dev/null 2>&1; then
         if [[ -f "frank-wolf.uf2" ]]; then

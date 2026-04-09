@@ -8,6 +8,9 @@
 #include "ps2kbd_wrapper.h"
 #include "ps2.h"
 #include "nespad.h"
+#ifdef USB_HID_ENABLED
+#include "usbhid.h"
+#endif
 
 /*
 =============================================================================
@@ -120,6 +123,8 @@ static uint8_t mouse_buttons = 0;
 */
 
 void IN_ProcessEvents(void) {
+    mouse_buttons = 0;  // Reset before merging all sources
+
     // Process multiple PS/2 bytes per frame
     for (int t = 0; t < 16; t++)
         ps2kbd_poll();
@@ -155,7 +160,77 @@ void IN_ProcessEvents(void) {
     // Poll NES gamepad
     nespad_read();
 
-    // Poll PS/2 mouse - accumulate deltas for SDL_GetRelativeMouseState
+#ifdef USB_HID_ENABLED
+    // Poll USB HID devices
+    usbhid_task();
+
+    // Drain USB keyboard events (same HID keycode format as PS/2)
+    {
+        uint8_t usb_kc;
+        int usb_down;
+        while (usbhid_get_key_action(&usb_kc, &usb_down)) {
+            ScanCode sc = hid_to_scancode(usb_kc);
+            if (sc == sc_None || sc >= sc_Last) continue;
+            sc = IN_MapKey(sc);
+            if (usb_down) {
+                Keyboard[sc] = true;
+                LastScan = sc;
+                if (sc == sc_Pause) Paused = true;
+                bool shifted = Keyboard[sc_LShift] || Keyboard[sc_RShift];
+                char ascii = hid_to_ascii(usb_kc, shifted);
+                if (ascii) { textinput[0] = ascii; textinput[1] = '\0'; }
+            } else {
+                Keyboard[sc] = false;
+            }
+        }
+    }
+
+    // Inject USB gamepad buttons as keyboard scancodes
+    {
+        usbhid_gamepad_state_t gp;
+        usbhid_get_gamepad_state(&gp);
+        static uint16_t prev_usb_gp_buttons = 0;
+        uint16_t cur = gp.buttons;
+        // Map gamepad buttons to keyboard scancodes
+        struct { uint16_t mask; ScanCode sc; } map[] = {
+            { 0x01, sc_LControl },  // A -> fire
+            { 0x02, sc_LAlt },      // B -> strafe
+            { 0x08, sc_Space },     // X -> use/open
+            { 0x04, sc_LShift },    // Y -> run
+            { 0x40, sc_Escape },    // Start -> menu
+            { 0x80, sc_Enter },     // Select -> enter
+            { 0x10, sc_1 },         // LB -> weapon 1
+            { 0x20, sc_2 },         // RB -> weapon 2
+        };
+        for (int i = 0; i < 8; i++) {
+            bool now = (cur & map[i].mask) != 0;
+            bool was = (prev_usb_gp_buttons & map[i].mask) != 0;
+            if (now && !was) {
+                Keyboard[map[i].sc] = true;
+                LastScan = map[i].sc;
+            } else if (!now && was) {
+                Keyboard[map[i].sc] = false;
+            }
+        }
+        prev_usb_gp_buttons = cur;
+    }
+
+    // Merge USB mouse (always read - zeros if not connected)
+    {
+        usbhid_mouse_state_t usb_mouse;
+        usbhid_get_mouse_state(&usb_mouse);
+        mouse_accum_dx += usb_mouse.dx;
+        mouse_accum_dy += usb_mouse.dy;
+        mouse_buttons |= usb_mouse.buttons;
+        // Auto-enable mouse when USB mouse first sends data
+        if ((usb_mouse.dx || usb_mouse.dy || usb_mouse.buttons) && !MousePresent) {
+            MousePresent = true;
+            mouseenabled = true;
+        }
+    }
+#endif
+
+    // Poll PS/2 mouse - merge deltas (OR buttons, don't overwrite)
     if (ps2_mouse_is_initialized()) {
         int16_t dx, dy;
         int8_t wheel;
@@ -163,7 +238,7 @@ void IN_ProcessEvents(void) {
         ps2_mouse_get_state(&dx, &dy, &wheel, &buttons);
         mouse_accum_dx += dx;
         mouse_accum_dy += dy;
-        mouse_buttons = buttons;
+        mouse_buttons |= buttons;
     }
 }
 
@@ -230,6 +305,18 @@ void IN_GetJoyDelta(int *dx, int *dy) {
     if (pad & DPAD_RIGHT) *dx = 127;
     if (pad & DPAD_UP)    *dy = -127;
     if (pad & DPAD_DOWN)  *dy = 127;
+
+#ifdef USB_HID_ENABLED
+    // Merge USB gamepad D-pad (always read, zeros if not connected)
+    if (*dx == 0 && *dy == 0) {
+        usbhid_gamepad_state_t gp;
+        usbhid_get_gamepad_state(&gp);
+        if (gp.dpad & 0x04) *dx = -127;  // left
+        if (gp.dpad & 0x08) *dx = 127;   // right
+        if (gp.dpad & 0x01) *dy = -127;  // up
+        if (gp.dpad & 0x02) *dy = 127;   // down
+    }
+#endif
 }
 
 void IN_GetJoyFineDelta(int *dx, int *dy) {
@@ -245,6 +332,18 @@ int IN_JoyButtons(void) {
     if (pad & DPAD_A)      buttons |= 2;   // bit 1 -> bt_strafe
     if (pad & DPAD_SELECT) buttons |= 4;   // bit 2 -> bt_use
     if (pad & DPAD_START)  buttons |= 8;   // bit 3 -> bt_run
+
+#ifdef USB_HID_ENABLED
+    // Merge USB gamepad buttons (always read, zeros if not connected)
+    {
+        usbhid_gamepad_state_t gp;
+        usbhid_get_gamepad_state(&gp);
+        if (gp.buttons & 0x01) buttons |= 1;   // A -> attack
+        if (gp.buttons & 0x02) buttons |= 2;   // B -> strafe
+        if (gp.buttons & 0x80) buttons |= 4;   // Select -> use
+        if (gp.buttons & 0x40) buttons |= 8;   // Start -> run
+    }
+#endif
     return buttons;
 }
 
@@ -267,6 +366,10 @@ void IN_Startup(void) {
 
     IN_ClearKeysDown();
     MousePresent = ps2_mouse_is_initialized();
+#ifdef USB_HID_ENABLED
+    if (!MousePresent)
+        MousePresent = usbhid_mouse_connected();
+#endif
     GrabInput = true;  // Bare metal - always grab input
     JoyNumButtons = 4;  // NES: B, A, Select, Start
 
