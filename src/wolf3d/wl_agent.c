@@ -1153,8 +1153,11 @@ void Cmd_Use (void)
         buttonheld[bt_use] = true;
         OperateDoor (doornum & ~BIT_DOOR);
     }
-    else
+    else if (!buttonheld[bt_use])
+    {
+        buttonheld[bt_use] = true;
         SD_PlaySound (DONOTHINGSND);
+    }
 }
 
 /*

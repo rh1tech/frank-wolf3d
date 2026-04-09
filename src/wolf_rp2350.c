@@ -472,13 +472,13 @@ void wolf_rp2350_init(void) {
     printf("Initializing PS/2 keyboard...\n");
     ps2kbd_init();
 
-    printf("Initializing I2S audio (pio0)...\n");
+    printf("Initializing I2S audio (pio1)...\n");
     memset(&audio_config, 0, sizeof(audio_config));
     audio_config.sample_freq = 44100;
     audio_config.channel_count = 2;
     audio_config.data_pin = I2S_DATA_PIN;
     audio_config.clock_pin_base = I2S_CLOCK_PIN_BASE;
-    audio_config.pio = pio0;
+    audio_config.pio = pio1;
     audio_config.dma_trans_count = 1024;
     audio_config.volume = 0;
     i2s_init(&audio_config);
