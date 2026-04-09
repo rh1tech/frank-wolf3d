@@ -2,6 +2,12 @@
 
 Wolfenstein 3D for Raspberry Pi Pico 2 (RP2350) with HDMI output, SD card, PS/2 or USB keyboard/mouse, NES gamepad, and OPL music.
 
+![Screenshot 1](screenshots/screen1.png)
+
+![Screenshot 2](screenshots/screen2.png)
+
+![Screenshot 3](screenshots/screen3.png)
+
 ## Supported Boards
 
 This firmware is designed for RP2350-based boards with integrated HDMI, SD card, PS/2 (or USB), and PSRAM:
