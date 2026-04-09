@@ -339,8 +339,8 @@ static void boot_setup_palette(void) {
     graphics_set_palette(18, 0x007050);
 }
 
-#ifndef FRANK_WOLF_VERSION
-#define FRANK_WOLF_VERSION "?"
+#ifndef FRANK_WOLF3D_VERSION
+#define FRANK_WOLF3D_VERSION "?"
 #endif
 
 static void boot_draw_animated_bg(uint8_t *fb, uint32_t t_ms,
@@ -368,7 +368,7 @@ static void wolf_draw_welcome_panel(uint8_t *fb) {
 
     const char *title = "FRANK WOLF3D";
     char version[64];
-    snprintf(version, sizeof(version), " v%s", FRANK_WOLF_VERSION);
+    snprintf(version, sizeof(version), " v%s", FRANK_WOLF3D_VERSION);
     int title_w = boot_text_width(title);
     int title_x = WS_PX + (WS_PW - title_w - boot_text_width(version)) / 2;
     int ty = WS_PY + 8;
@@ -390,11 +390,7 @@ static void wolf_draw_welcome_panel(uint8_t *fb) {
              board, CPU_CLOCK_MHZ, PSRAM_MAX_FREQ_MHZ);
     boot_draw_text(fb, lx, ty + 46, buf, 1);
     boot_draw_text(fb, lx, ty + 56, "github.com/rh1tech/frank-wolf3d", 1);
-#ifdef USB_HID_ENABLED
-    boot_draw_text(fb, lx, ty + 66, "Gamepad: NES, USB HID", 1);
-#else
-    boot_draw_text(fb, lx, ty + 66, "Gamepad: NES", 1);
-#endif
+    (void)0;
     boot_draw_text(fb, lx, ty + 78, "Press any key or button...", 1);
 }
 

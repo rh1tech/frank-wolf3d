@@ -1,5 +1,5 @@
 /*
- * WOLF3D - RP2350 Port (frank-wolf)
+ * WOLF3D - RP2350 Port (frank-wolf3d)
  * Main entry point with overclocking support
  */
 #include "pico/stdlib.h"
@@ -12,7 +12,7 @@
 
 // Flash timing configuration for overclocking
 // Must be called BEFORE changing system clock
-#define FLASH_MAX_FREQ_MHZ 88
+// FLASH_MAX_FREQ_MHZ is defined via CMake (66 or 88 MHz)
 
 static void __no_inline_not_in_flash_func(set_flash_timings)(int cpu_mhz) {
     const int clock_hz = cpu_mhz * 1000000;
@@ -61,7 +61,7 @@ int main() {
         sleep_ms(500);
     }
 
-    printf("frank-wolf - Wolfenstein 3D for RP2350\n");
+    printf("FRANK Wolf3D - Wolfenstein 3D for RP2350\n");
     printf("System Clock: %lu MHz\n", clock_get_hz(clk_sys) / 1000000);
 
     // Initialize RP2350 hardware (PSRAM, HDMI, SD, PS/2, audio)

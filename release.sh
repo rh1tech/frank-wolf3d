@@ -1,11 +1,12 @@
 #!/bin/bash
 #
-# release.sh - Build all release variants of frank-wolf
+# release.sh - Build all release variants of frank-wolf3d
 #
-# Creates UF2 files for each board variant (M1, M2) at each clock speed:
-#   - Non-overclocked: 252 MHz CPU, 100 MHz PSRAM
-#   - Medium overclock: 378 MHz CPU, 133 MHz PSRAM
-#   - Max overclock: 504 MHz CPU, 166 MHz PSRAM
+# Creates UF2 files for each board variant (M1, M2)
+# Default configuration: 378 MHz CPU, 100 MHz PSRAM, 66 MHz Flash
+#
+# Usage: ./release.sh [version]
+#   version  - Optional version string (e.g. 1.05). If omitted, prompts interactively.
 #
 
 set -e
@@ -38,7 +39,7 @@ if [[ $NEXT_MINOR -ge 100 ]]; then
 fi
 
 echo ""
-echo -e "${CYAN}frank-wolf Release Builder${NC}"
+echo -e "${CYAN}FRANK Wolf3D Release Builder${NC}"
 echo ""
 echo -e "Last version: ${YELLOW}${LAST_MAJOR}.$(printf '%02d' $LAST_MINOR)${NC}"
 echo ""
@@ -68,35 +69,27 @@ echo "$MAJOR $MINOR" > "$VERSION_FILE"
 RELEASE_DIR="$SCRIPT_DIR/release"
 mkdir -p "$RELEASE_DIR"
 
-CONFIGS=(
-    "M1 252 100 non-overclocked"
-    "M1 378 133 medium-overclock"
-    "M1 504 166 max-overclock"
-    "M2 252 100 non-overclocked"
-    "M2 378 133 medium-overclock"
-    "M2 504 166 max-overclock"
-)
+BOARDS=("M1" "M2")
 
 BUILD_COUNT=0
-TOTAL_BUILDS=${#CONFIGS[@]}
+TOTAL_BUILDS=${#BOARDS[@]}
 
-echo -e "${YELLOW}Building $TOTAL_BUILDS firmware variants...${NC}"
+echo -e "${YELLOW}Building $TOTAL_BUILDS firmware variants (378/100/66)...${NC}"
 
-for config in "${CONFIGS[@]}"; do
-    read -r BOARD CPU PSRAM DESC <<< "$config"
+for BOARD in "${BOARDS[@]}"; do
     BUILD_COUNT=$((BUILD_COUNT + 1))
 
     if [[ "$BOARD" == "M1" ]]; then BOARD_NUM=1; else BOARD_NUM=2; fi
 
-    OUTPUT_NAME="frank-wolf_m${BOARD_NUM}_${CPU}_${PSRAM}_${VERSION}.uf2"
+    OUTPUT_NAME="frank-wolf3d_m${BOARD_NUM}_${VERSION}.uf2"
     echo -e "${CYAN}[$BUILD_COUNT/$TOTAL_BUILDS] Building: $OUTPUT_NAME${NC}"
 
     rm -rf build && mkdir build && cd build
-    cmake .. -DBOARD_VARIANT="$BOARD" -DCPU_SPEED="$CPU" -DPSRAM_SPEED="$PSRAM" -DUSB_HID_ENABLED=1 > /dev/null 2>&1
+    cmake .. -DBOARD_VARIANT="$BOARD" -DCPU_SPEED=378 -DPSRAM_SPEED=100 -DFLASH_SPEED=66 -DUSB_HID_ENABLED=1 > /dev/null 2>&1
 
     if make -j8 > /dev/null 2>&1; then
-        if [[ -f "frank-wolf.uf2" ]]; then
-            cp "frank-wolf.uf2" "$RELEASE_DIR/$OUTPUT_NAME"
+        if [[ -f "frank-wolf3d.uf2" ]]; then
+            cp "frank-wolf3d.uf2" "$RELEASE_DIR/$OUTPUT_NAME"
             echo -e "  ${GREEN}OK${NC} -> release/$OUTPUT_NAME"
         else
             echo -e "  ${RED}UF2 not found${NC}"
